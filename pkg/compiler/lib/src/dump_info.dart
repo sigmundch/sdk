@@ -97,6 +97,7 @@ class ElementToJsonVisitor
     for (LibraryElement library in compiler.libraryLoader.libraries.toList()) {
       visit(library);
     }
+    print('total  $classes ${classes/32}');
   }
 
   Map<String, dynamic> visit(Element e, [_]) => e.accept(this, null);
@@ -226,8 +227,10 @@ class ElementToJsonVisitor
     };
   }
 
+  static int classes = 0;
   Map<String, dynamic> visitClassElement(ClassElement element, _) {
     String id = mapper._class.add(element);
+    classes++;
     List<String> children = [];
 
     int size = compiler.dumpInfoTask.sizeOf(element);

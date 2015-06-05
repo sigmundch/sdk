@@ -62,6 +62,8 @@ import 'util/characters.dart' show $_;
 import 'util/uri_extras.dart' as uri_extras show relativize;
 import 'util/util.dart';
 
+import 'inferrer/inference_stats.dart';
+
 export 'helpers/helpers.dart';
 export 'resolution/resolution.dart' show TreeElements, TreeElementMapping;
 export 'scanner/scannerlib.dart' show isUserDefinableOperator,
