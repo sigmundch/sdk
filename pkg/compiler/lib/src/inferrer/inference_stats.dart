@@ -1,7 +1,7 @@
 library inference_stats;
 
-import 'dart:math' show max;
-
+import '../stats/stats.dart';
+import '../stats/stats_viewer.dart';
 import '../dart_types.dart';
 import '../elements/elements.dart';
 import '../resolution/operators.dart';
@@ -25,144 +25,9 @@ class InferenceStatsTask extends CompilerTask {
       for (var lib in compiler.libraryLoader.libraries) {
         lib.accept(visitor, null);
       }
-      print(visitor.result);
+      print(formatAsTable(visitor.result));
     });
   }
-}
-
-// TODO:
-// - add a result visitor
-// - do text summary as a visitor.
-
-abstract class ResultVisitor {
-  visitGlobal(GlobalResult global);
-  visitGroup(GroupResult group);
-  visitLibrary(LibraryResult library);
-  visitFunction(FunctionResult functino);
-}
-
-abstract class RecursiveResultVisitor {
-  visitGlobal(GlobalResult global) {
-    global.packages.values.forEach(visitGroup);
-    visitGroup(global.system);
-    visitGroup(global.loose);
-  }
-
-  visitGroup(GroupResult group) {
-    group.libraries.forEach(visitLibrary);
-  }
-
-  visitLibrary(LibraryResult library) {
-    library.functions.forEach(visitFunction);
-  }
-}
-
-class _Counter extends RecursiveResultVisitor {
-  Map<String, Map<String, int>> groupTotals = {};
-  Map<String, int> currentGroupTotals;
-  Map<String, int> totals = {};
-
-  visitGroup(GroupResult group) {
-    currentGroupTotals = groupTotals.putIfAbsent(group.name, () => {});
-    super.visitGroup(group);
-    _addMap(currentGroupTotals, totals);
-  }
-
-  visitFunction(FunctionResult function) {
-    _addMap(function.results, currentGroupTotals);
-  }
-
-  static _addMap(Map<String, int> source, Map<String, int> target) {
-    source.forEach((k, v) {
-      var previous = target[k]; // target[k] ?? 0;
-      if (previous == null) previous = 0;
-      target[k] = previous + v;
-    });
-  }
-}
-
-/// Represents the metrics we are computing.
-class GlobalResult {
-  final Map<String, GroupResult> packages = {};
-  final GroupResult loose = new GroupResult('*loose*');
-  final GroupResult system = new GroupResult('*system*');
-
-  void addLibraryResult(LibraryResult library) {
-    if (library.uri.scheme == 'package') {
-      var name = library.uri.pathSegments[0];
-      var package = packages.putIfAbsent(name, () => new GroupResult(name));
-      package.libraries.add(library);
-    } else if (library.uri.scheme == 'dart') {
-      system.libraries.add(library);
-    } else {
-      loose.libraries.add(library);
-    }
-  }
-
-  accept(ResultVisitor v) => v.visitGlobal(this);
-
-  String toString() {
-    var visitor = new _Counter();
-    accept(visitor);
-    var table = new _Table();
-    table.declareColumn('group');
-    table.declareColumn('send', abbreviate: true);
-    table.declareColumn('dynamic get', abbreviate: true);
-    table.addHeader();
-    appendCount(n) => table.addEntry(n == null ? 0 : n);
-
-    for (var group in visitor.groupTotals.keys) {
-      table.addEntry(group);
-      appendCount(visitor.groupTotals[group]['send']);
-      appendCount(visitor.groupTotals[group]['dynamic get']);
-    }
-    table.addEmptyRow();
-    table.addHeader();
-    table.addEntry('total');
-    appendCount(visitor.totals['send']);
-    appendCount(visitor.totals['dynamic get']);
-
-    appendPercent(count, total) {
-      if (count == null) count = 0;
-      var value = (count * 100 / total).toStringAsFixed(2);
-      table.addEntry(value);
-    }
-
-    table.addEntry('%');
-    var totalSends = visitor.totals['send'];
-    appendCount(100);
-    appendPercent(visitor.totals['dynamic get'], totalSends);
-
-    return table.toString();
-  }
-}
-
-/// Summarizes results for a group of libraries. Typically for all libraries in
-/// a package, all system libraries, or all loose libraries.
-class GroupResult {
-  final String name;
-  final List<LibraryResult> libraries = [];
-
-  GroupResult(this.name);
-}
-
-/// Library-level metrics.
-class LibraryResult {
-  final Uri uri;
-  final List<String> classes = [];
-  final List<FunctionResult> functions = [];
-
-  LibraryResult(this.uri);
-  accept(ResultVisitor v) => v.visitLibrary(this);
-}
-
-/// Function metrics
-class FunctionResult {
-  String name;
-
-  Map<String, int> results = {};
-  FunctionResult(this.name);
-  accept(ResultVisitor v) => v.visitFunction(this);
 }
 
 /// Visitor that goes through all elements and builds the metrics information
@@ -176,7 +41,7 @@ class ElementCounter extends RecursiveElementVisitor {
   visitLibraryElement(LibraryElement e, arg) {
     var uri = e.canonicalUri;
     currentLib = new LibraryResult(e.canonicalUri);
-    result.addLibraryResult(currentLib);
+    result.add(currentLib);
     return super.visitLibraryElement(e, arg);
   }
 
@@ -209,9 +74,7 @@ class ElementCounter extends RecursiveElementVisitor {
       return;
     }
     resolvedAst.node.accept(visitor);
-    currentLib.functions.add(new FunctionResult(e.name)
-        ..results['send'] = visitor._sends
-        ..results['dynamic get'] = visitor._dynamicGet);
+    currentLib.functions.add(new FunctionResult(e.name, visitor.metrics));
   }
 
   // TODO(sigmund): visit initializers too, they can contain `sends`.
@@ -222,8 +85,7 @@ class InferenceStatsVisitor<T> extends TraversalVisitor<Void, T>
     implements SemanticSendVisitor {
   InferenceStatsVisitor(TreeElements elements) : super(elements);
 
-  int _sends = 0;
-  int _dynamicGet = 0;
+  Metrics metrics = new Metrics();
 
   apply(node, a) {
     super.apply(node, a);
@@ -235,7 +97,7 @@ class InferenceStatsVisitor<T> extends TraversalVisitor<Void, T>
 
   void visitSend(Send node) {
     //print('visitsend: $node');
-    _sends++;
+    metrics[Measurement.send]++;
     super.visitSend(node);
   }
 
@@ -286,7 +148,7 @@ class InferenceStatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
-    _dynamicGet++;
+    metrics[Measurement.dynamicGet]++;
     super.visitDynamicPropertyGet(node, receiver, selector, arg);
   }
 
@@ -1701,103 +1563,5 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
   @override
   R visitClosureFieldElement(ClosureFieldElement e, A arg) {
     return visitVariableElement(e, arg);
-  }
-}
-
-// TODO --- move and reorg
-
-/// Helper class to combine all the information in table form.
-class _Table {
-  int _totalColumns = 0;
-  int get totalColumns => _totalColumns;
-
-  /// Abbreviations, used to make headers shorter.
-  Map<String, String> abbreviations = {};
-
-  /// Width of each column.
-  List<int> widths = <int>[];
-
-  /// The header for each column (`header.length == totalColumns`).
-  List header = [];
-
-  /// Each row on the table. Note that all rows have the same size
-  /// (`rows[*].length == totalColumns`).
-  List<List> rows = [];
-
-  /// Whether we started adding entries. Indicates that no more columns can be
-  /// added.
-  bool _sealed = false;
-
-  /// Current row being built by [addEntry].
-  List _currentRow;
-
-  /// Add a column with the given [name].
-  void declareColumn(String name, {bool abbreviate: false}) {
-    assert(!_sealed);
-    var headerName = name;
-    if (abbreviate) {
-      // abbreviate the header by using only the initials of each word
-      headerName = name.split(' ').map((s) => s.substring(0, 1).toUpperCase()).join('');
-      while (abbreviations[headerName] != null) headerName = "$headerName'";
-      abbreviations[headerName] = name;
-    }
-    widths.add(max(5, headerName.length + 1));
-    header.add(headerName);
-    _totalColumns++;
-  }
-
-  /// Add an entry in the table, creating a new row each time [totalColumns]
-  /// entries are added.
-  void addEntry(entry) {
-    if (_currentRow == null) {
-      _sealed = true;
-      _currentRow = [];
-    }
-    int pos = _currentRow.length;
-    assert(pos < _totalColumns);
-
-    widths[pos] = max(widths[pos], '$entry'.length + 1);
-    _currentRow.add('$entry');
-
-    if (pos + 1 == _totalColumns) {
-      rows.add(_currentRow);
-      _currentRow = [];
-    }
-  }
-
-  /// Add an empty row to divide sections of the table.
-  void addEmptyRow() {
-    var emptyRow = [];
-    for (int i = 0; i < _totalColumns; i++) {
-      emptyRow.add('-' * widths[i]);
-    }
-    rows.add(emptyRow);
-  }
-
-  /// Enter the header titles. OK to do so more than once in long tables.
-  void addHeader() {
-    rows.add(header);
-  }
-
-  /// Generates a string representation of the table to print on a terminal.
-  // TODO(sigmund): add also a .csv format
-  String toString() {
-    var sb = new StringBuffer();
-    sb.write('\n');
-    for (var row in rows) {
-      for (int i = 0; i < _totalColumns; i++) {
-        var entry = row[i];
-        // Align first column to the left, everything else to the right.
-        sb.write(
-            i == 0 ? entry.padRight(widths[i]) : entry.padLeft(widths[i] + 1));
-      }
-      sb.write('\n');
-    }
-    sb.write('\nWhere:\n');
-    for (var id in abbreviations.keys) {
-      sb.write('  $id:'.padRight(7));
-      sb.write(' ${abbreviations[id]}\n');
-    }
-    return sb.toString();
   }
 }
