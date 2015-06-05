@@ -12,15 +12,15 @@ import '../universe/universe.dart' show Selector, CallStructure;
 import '../dart2jslib.dart' show CompilerTask, Compiler;
 import '../elements/visitor.dart' show ElementVisitor;
 
-/// Task that collects metric information from the inference algorithms.
-class InferenceStatsTask extends CompilerTask {
+/// Task that collects metric information about types.
+class StatsBuilderTask extends CompilerTask {
   String get name => "Inference Stats";
 
-  InferenceStatsTask(Compiler compiler) : super(compiler);
+  StatsBuilderTask(Compiler compiler) : super(compiler);
 
   void run() {
     measure(() {
-      var visitor = new ElementCounter();
+      var visitor = new StatsBuilder();
       print('collecting stats');
       for (var lib in compiler.libraryLoader.libraries) {
         lib.accept(visitor, null);
@@ -32,7 +32,7 @@ class InferenceStatsTask extends CompilerTask {
 
 /// Visitor that goes through all elements and builds the metrics information
 /// from it.
-class ElementCounter extends RecursiveElementVisitor {
+class StatsBuilder extends RecursiveElementVisitor {
   final GlobalResult result = new GlobalResult();
   LibraryResult currentLib;
 
@@ -63,7 +63,7 @@ class ElementCounter extends RecursiveElementVisitor {
       return;
     }
     var resolvedAst = e.resolvedAst;
-    var visitor = new InferenceStatsVisitor(resolvedAst.elements);
+    var visitor = new _StatsVisitor(resolvedAst.elements);
     if (resolvedAst.node == null) {
       _debug('no node ${e.runtimeType}');
       return;
@@ -80,10 +80,10 @@ class ElementCounter extends RecursiveElementVisitor {
   // TODO(sigmund): visit initializers too, they can contain `sends`.
 }
 
-/// Visitor that collects statistics about our understanding of the program.
-class InferenceStatsVisitor<T> extends TraversalVisitor<Void, T>
+/// Visitor that collects statistics about our understanding of a function.
+class _StatsVisitor<T> extends TraversalVisitor<Void, T>
     implements SemanticSendVisitor {
-  InferenceStatsVisitor(TreeElements elements) : super(elements);
+  _StatsVisitor(TreeElements elements) : super(elements);
 
   Metrics metrics = new Metrics();
 

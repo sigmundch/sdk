@@ -961,7 +961,7 @@ abstract class Compiler implements DiagnosticListener {
   DeferredLoadTask deferredLoadTask;
   MirrorUsageAnalyzerTask mirrorUsageAnalyzerTask;
   DumpInfoTask dumpInfoTask;
-  InferenceStatsTask inferenceStatsTask;
+  StatsBuilderTask statsBuilderTask;
   String buildId;
 
   /// A customizable filter that is applied to enqueued work items.
@@ -1130,7 +1130,7 @@ abstract class Compiler implements DiagnosticListener {
       mirrorUsageAnalyzerTask = new MirrorUsageAnalyzerTask(this),
       enqueuer = new EnqueueTask(this),
       dumpInfoTask = new DumpInfoTask(this),
-      inferenceStatsTask = new InferenceStatsTask(this),
+      statsBuilderTask = new StatsBuilderTask(this),
       reuseLibraryTask = new GenericTask('Reuse library', this),
     ];
 
@@ -1659,7 +1659,7 @@ abstract class Compiler implements DiagnosticListener {
     log('Inferring types...');
     typesTask.onResolutionComplete(mainFunction);
 
-    inferenceStatsTask.run();
+    statsBuilderTask.run();
 
     if (stopAfterTypeInference) return;
 
