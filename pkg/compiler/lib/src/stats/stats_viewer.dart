@@ -8,57 +8,59 @@ String formatAsTable(GlobalResult results) {
   var visitor = new _Counter();
   results.accept(visitor);
   var table = new _Table();
-  table.declareColumn('group');
+  table.declareColumn('bundle');
   
-  Measurement.values.forEach(
-      (m) => table.declareColumn(measurementNames[m], abbreviate: true));
+  int colorIndex = 0;
+  visitAllMetrics((m, parent) {
+    if (m is GroupedMetric) colorIndex = (colorIndex + 1) % _groupColors.length;
+    table.declareColumn(m.name,
+        abbreviate: true, color: _groupColors[colorIndex]);
+  });
   table.addHeader();
   appendCount(n) => table.addEntry(n == null ? 0 : n);
 
-  for (var group in visitor.groupTotals.keys) {
-    table.addEntry(group);
-    for (var measurement in Measurement.values) {
-      appendCount(visitor.groupTotals[group][measurement]);
-    }
+  for (var bundle in visitor.bundleTotals.keys) {
+    table.addEntry(bundle);
+    visitAllMetrics((m, _) => appendCount(visitor.bundleTotals[bundle][m]));
   }
   table.addEmptyRow();
   table.addHeader();
   table.addEntry('total');
-  for (var measurement in Measurement.values) {
-    appendCount(visitor.totals[measurement]);
-  }
+  visitAllMetrics((m, _) => appendCount(visitor.totals[m]));
 
   appendPercent(count, total) {
     if (count == null) count = 0;
-    var value = count * 100 / total;
-    table.addEntry(value == 100 ? 100 : value.toStringAsFixed(2));
+    table.addEntry((count * 100 / total).toStringAsFixed(2));
   }
 
   table.addEntry('%');
-  var totalSends = visitor.totals[Measurement.send];
-  for (var measurement in Measurement.values) {
-    appendPercent(visitor.totals[measurement], totalSends);
-  }
+  visitAllMetrics((metric, parent) {
+    if (parent == null) {
+      table.addEntry(100);
+    } else {
+      appendPercent(visitor.totals[metric], visitor.totals[parent]);
+    }
+  });
 
   return table.toString();
 }
 
 /// Visitor that adds up results for all functions in libraries, and all
-/// libraries in a group.
+/// libraries in a bundle.
 class _Counter extends RecursiveResultVisitor {
-  Map<String, Metrics> groupTotals = {};
-  Metrics currentGroupTotals;
-  Metrics totals = new Metrics();
+  Map<String, Measurements> bundleTotals = {};
+  Measurements currentBundleTotals;
+  Measurements totals = new Measurements();
 
-  visitGroup(GroupResult group) {
-    currentGroupTotals =
-        groupTotals.putIfAbsent(group.name, () => new Metrics());
-    super.visitGroup(group);
-    totals.addFrom(currentGroupTotals);
+  visitBundle(BundleResult bundle) {
+    currentBundleTotals =
+        bundleTotals.putIfAbsent(bundle.name, () => new Measurements());
+    super.visitBundle(bundle);
+    totals.addFrom(currentBundleTotals);
   }
 
   visitFunction(FunctionResult function) {
-    currentGroupTotals.addFrom(function.metrics);
+    currentBundleTotals.addFrom(function.measurements);
   }
 }
 
@@ -76,6 +78,9 @@ class _Table {
   /// The header for each column (`header.length == totalColumns`).
   List header = [];
 
+  /// The color for each column (`color.length == totalColumns`).
+  List colors = [];
+
   /// Each row on the table. Note that all rows have the same size
   /// (`rows[*].length == totalColumns`).
   List<List> rows = [];
@@ -88,7 +93,8 @@ class _Table {
   List _currentRow;
 
   /// Add a column with the given [name].
-  void declareColumn(String name, {bool abbreviate: false}) {
+  void declareColumn(String name,
+      {bool abbreviate: false, String color: _NO_COLOR}) {
     assert(!_sealed);
     var headerName = name;
     if (abbreviate) {
@@ -99,6 +105,7 @@ class _Table {
     }
     widths.add(max(5, headerName.length + 1));
     header.add(headerName);
+    colors.add(color);
     _totalColumns++;
   }
 
@@ -141,12 +148,19 @@ class _Table {
     var sb = new StringBuffer();
     sb.write('\n');
     for (var row in rows) {
+      var lastColor = _NO_COLOR;
       for (int i = 0; i < _totalColumns; i++) {
         var entry = row[i];
+        var color = colors[i];
+        if (lastColor != color) {
+          sb.write(color);
+          lastColor = color;
+        }
         // Align first column to the left, everything else to the right.
         sb.write(
             i == 0 ? entry.padRight(widths[i]) : entry.padLeft(widths[i] + 1));
       }
+      if (lastColor != _NO_COLOR) sb.write(_NO_COLOR);
       sb.write('\n');
     }
     sb.write('\nWhere:\n');
@@ -157,3 +171,13 @@ class _Table {
     return sb.toString();
   }
 }
+
+const _groupColors = const [
+  _WHITE_COLOR,
+  _NO_COLOR,
+];
+
+const _NO_COLOR = "\x1b[0m";
+const _GREEN_COLOR = "\x1b[32m";
+const _YELLOW_COLOR = "\x1b[33m";
+const _WHITE_COLOR = "\x1b[37m";

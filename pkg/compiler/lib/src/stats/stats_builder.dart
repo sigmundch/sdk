@@ -11,6 +11,7 @@ import '../tree/tree.dart';
 import '../universe/universe.dart' show Selector, CallStructure;
 import '../dart2jslib.dart' show CompilerTask, Compiler;
 import '../elements/visitor.dart' show ElementVisitor;
+import '../scanner/scannerlib.dart' show PartialElement;
 
 /// Task that collects metric information about types.
 class StatsBuilderTask extends CompilerTask {
@@ -58,6 +59,13 @@ class StatsBuilder extends RecursiveElementVisitor {
   }
 
   visitFunctionElement(FunctionElement e, arg) {
+    if (!e.hasNode) {
+      // TODO: this may be wrong, no node could mean an empty constructor body
+      if (!e.library.isPlatformLibrary) print('>> $e: unreachable');
+      currentLib.functions.add(
+          new FunctionResult(e.name, const Measurements.unreachableFunction()));
+      return;
+    }
     if (!e.hasResolvedAst) {
       _debug('no resolved ast ${e.runtimeType}');
       return;
@@ -74,7 +82,8 @@ class StatsBuilder extends RecursiveElementVisitor {
       return;
     }
     resolvedAst.node.accept(visitor);
-    currentLib.functions.add(new FunctionResult(e.name, visitor.metrics));
+    if (!e.library.isPlatformLibrary) print('>> $e: reachable, add ${visitor.measurements[Metric.functions]}');
+    currentLib.functions.add(new FunctionResult(e.name, visitor.measurements));
   }
 
   // TODO(sigmund): visit initializers too, they can contain `sends`.
@@ -85,7 +94,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
     implements SemanticSendVisitor {
   _StatsVisitor(TreeElements elements) : super(elements);
 
-  Metrics metrics = new Metrics();
+  Measurements measurements = new Measurements.reachableFunction();
 
   apply(node, a) {
     super.apply(node, a);
@@ -97,7 +106,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
 
   void visitSend(Send node) {
     //print('visitsend: $node');
-    metrics[Measurement.send]++;
+    measurements[Metric.send]++;
     super.visitSend(node);
   }
 
@@ -110,6 +119,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitParameterInvoke(Send node, ParameterElement parameter,
       NodeList arguments, CallStructure callStructure, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitParameterInvoke(node, parameter, arguments, callStructure, arg);
   }
 
@@ -123,6 +133,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitLocalVariableInvoke(Send node, LocalVariableElement variable,
       NodeList arguments, CallStructure callStructure, T arg) {
+    measurements[Metric.dynamicInvoke]++;
     super.visitLocalVariableInvoke(
         node, variable, arguments, callStructure, arg);
   }
@@ -137,6 +148,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitLocalFunctionInvoke(Send node, LocalFunctionElement function,
       NodeList arguments, CallStructure callStructure, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitLocalFunctionInvoke(
         node, function, arguments, callStructure, arg);
   }
@@ -148,7 +160,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
-    metrics[Measurement.dynamicGet]++;
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertyGet(node, receiver, selector, arg);
   }
 
@@ -162,6 +174,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitDynamicPropertySet(
       SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertySet(node, receiver, selector, rhs, arg);
   }
 
@@ -175,6 +188,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitDynamicPropertyInvoke(
       Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertyInvoke(node, receiver, arguments, selector, arg);
   }
 
@@ -194,6 +208,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitThisPropertyGet(Send node, Selector selector, A arg) {
+    measurements[Metric.virtualSend]++;
     super.visitThisPropertyGet(node, selector, arg);
   }
 
@@ -210,6 +225,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitThisPropertySet(SendSet node, Selector selector, Node rhs, A arg) {
+    measurements[Metric.virtualSend]++;
     super.visitThisPropertySet(node, selector, rhs, arg);
   }
 
@@ -233,6 +249,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitThisPropertyInvoke(
       Send node, NodeList arguments, Selector selector, A arg) {
+    measurements[Metric.virtualSend]++;
     super.visitThisPropertyInvoke(node, arguments, selector, arg);
   }
 
@@ -243,6 +260,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitExpressionInvoke(Send node, Node expression, NodeList arguments,
       Selector selector, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitExpressionInvoke(node, expression, arguments, selector, arg);
   }
 
@@ -256,6 +274,9 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticFieldInvoke(Send node, FieldElement field, NodeList arguments,
       CallStructure callStructure, T arg) {
+    // Depends on whether or not we know the closure/function type we are
+    // calling.
+    measurements[Metric.dynamicSend]++;
     super.visitStaticFieldInvoke(node, field, arguments, callStructure, arg);
   }
 
@@ -281,6 +302,46 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitTopLevelFieldInvoke(Send node, FieldElement field,
       NodeList arguments, CallStructure callStructure, T arg) {
     super.visitTopLevelFieldInvoke(node, field, arguments, callStructure, arg);
+  }
+
+  void visitTopLevelFunctionInvoke(
+      Send node,
+      MethodElement function,
+      NodeList arguments,
+      CallStructure callStructure,
+      T arg) {
+    measurements[Metric.staticSend]++;
+    super.visitTopLevelFunctionInvoke(node, function, arguments, callStructure, arg);
+  }
+
+  void visitTopLevelFunctionIncompatibleInvoke(
+      Send node,
+      MethodElement function,
+      NodeList arguments,
+      CallStructure callStructure,
+      A arg) {
+    measurements[Metric.staticSend]++;
+    super.visitTopLevelFunctionIncompatibleInvoke(node, function, arguments, callStructure, arg);
+  }
+
+  void visitUnresolvedSuperInvoke(
+      Send node,
+      Element function,
+      NodeList arguments,
+      Selector selector,
+      A arg) {
+    measurements[Metric.monomorphicSend]++;
+    super.visitUnresolvedSuperInvoke(node, function, arguments, selector, arg);
+  }
+
+  @override
+  R visitThisInvoke(
+      Send node,
+      NodeList arguments,
+      CallStructure callStructure,
+      A arg) {
+    measurements[Metric.monomorphicSend]++;
+    super.visitThisInvoke(node, arguments, callStructure, arg);
   }
 
   /// Invocation of the top level [getter] with [arguments].
@@ -359,6 +420,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitBinary(
       Send node, Node left, BinaryOperator operator, Node right, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitBinary(node, left, operator, right, arg);
   }
 
@@ -368,6 +430,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     lookup(a, b) => a[b];
   ///
   void visitIndex(Send node, Node receiver, Node index, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitIndex(node, receiver, index, arg);
   }
 
@@ -379,6 +442,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitIndexPrefix(
       Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitIndexPrefix(node, receiver, index, operator, arg);
   }
 
@@ -390,6 +454,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitIndexPostfix(
       Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitIndexPostfix(node, receiver, index, operator, arg);
   }
 
@@ -399,6 +464,8 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     neq(a, b) => a != b;
   ///
   void visitNotEquals(Send node, Node left, Node right, T arg) {
+    // refine also if we know that a or b are null only -> no invoke
+    measurements[Metric.dynamicSend]++;
     super.visitNotEquals(node, left, right, arg);
   }
 
@@ -408,6 +475,8 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     eq(a, b) => a == b;
   ///
   void visitEquals(Send node, Node left, Node right, T arg) {
+    // refine also if we know that a or b are null only -> no invoke
+    measurements[Metric.dynamicSend]++;
     super.visitEquals(node, left, right, arg);
   }
 
@@ -419,6 +488,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     comp(a, b) => ~a;
   ///
   void visitUnary(Send node, UnaryOperator operator, Node expression, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitUnary(node, operator, expression, arg);
   }
 
@@ -428,6 +498,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     not(a) => !a;
   ///
   void visitNot(Send node, Node expression, T arg) {
+    // nothing
     super.visitNot(node, expression, arg);
   }
 
@@ -437,6 +508,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     m(receiver, index, rhs) => receiver[index] = rhs;
   ///
   void visitIndexSet(SendSet node, Node receiver, Node index, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitIndexSet(node, receiver, index, rhs, arg);
   }
 
@@ -446,6 +518,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     m() => left && right;
   ///
   void visitLogicalAnd(Send node, Node left, Node right, T arg) {
+    // nothing
     super.visitLogicalAnd(node, left, right, arg);
   }
 
@@ -455,6 +528,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     m() => left || right;
   ///
   void visitLogicalOr(Send node, Node left, Node right, T arg) {
+    // nothing
     super.visitLogicalOr(node, left, right, arg);
   }
 
@@ -468,6 +542,8 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitDynamicPropertyCompound(Send node, Node receiver,
       AssignmentOperator operator, Node rhs, Selector getterSelector,
       Selector setterSelector, T arg) {
+
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertyCompound(
         node, receiver, operator, rhs, getterSelector, setterSelector, arg);
   }
@@ -479,6 +555,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitParameterCompound(Send node, ParameterElement parameter,
       AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitParameterCompound(node, parameter, operator, rhs, arg);
   }
 
@@ -493,6 +570,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitLocalVariableCompound(Send node, LocalVariableElement variable,
       AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitLocalVariableCompound(node, variable, operator, rhs, arg);
   }
 
@@ -507,6 +585,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticFieldCompound(node, field, operator, rhs, arg);
   }
 
@@ -522,6 +601,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticGetterSetterCompound(Send node, FunctionElement getter,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticGetterSetterCompound(
         node, getter, setter, operator, rhs, arg);
   }
@@ -539,6 +619,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticMethodSetterCompound(Send node, FunctionElement method,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticMethodSetterCompound(
         node, method, setter, operator, rhs, arg);
   }
@@ -552,6 +633,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelFieldCompound(node, field, operator, rhs, arg);
   }
 
@@ -565,6 +647,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelGetterSetterCompound(Send node, FunctionElement getter,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelGetterSetterCompound(
         node, getter, setter, operator, rhs, arg);
   }
@@ -580,6 +663,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelMethodSetterCompound(Send node, FunctionElement method,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelMethodSetterCompound(
         node, method, setter, operator, rhs, arg);
   }
@@ -593,6 +677,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitCompoundIndexSet(SendSet node, Node receiver, Node index,
       AssignmentOperator operator, Node rhs, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitCompoundIndexSet(node, receiver, index, operator, rhs, arg);
   }
 
@@ -606,6 +691,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitDynamicPropertyPrefix(Send node, Node receiver,
       IncDecOperator operator, Selector getterSelector, Selector setterSelector,
       T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertyPrefix(
         node, receiver, operator, getterSelector, setterSelector, arg);
   }
@@ -617,6 +703,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitParameterPrefix(
       Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitParameterPrefix(node, parameter, operator, arg);
   }
 
@@ -630,6 +717,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitLocalVariablePrefix(Send node, LocalVariableElement variable,
       IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitLocalVariablePrefix(node, variable, operator, arg);
   }
 
@@ -648,6 +736,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitThisPropertyPrefix(Send node, IncDecOperator operator,
       Selector getterSelector, Selector setterSelector, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitThisPropertyPrefix(
         node, operator, getterSelector, setterSelector, arg);
   }
@@ -664,6 +753,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticFieldPrefix(node, field, operator, arg);
   }
 
@@ -679,6 +769,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticGetterSetterPrefix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticGetterSetterPrefix(node, getter, setter, operator, arg);
   }
 
@@ -694,6 +785,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticMethodSetterPrefix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticMethodSetterPrefix(node, getter, setter, operator, arg);
   }
 
@@ -705,6 +797,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelFieldPrefix(node, field, operator, arg);
   }
 
@@ -718,6 +811,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelGetterSetterPrefix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelGetterSetterPrefix(node, getter, setter, operator, arg);
   }
 
@@ -731,6 +825,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelMethodSetterPrefix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelMethodSetterPrefix(node, method, setter, operator, arg);
   }
 
@@ -745,6 +840,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperFieldPrefix(node, field, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldPrefix(node, field, operator, arg);
   }
 
@@ -764,6 +860,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitSuperFieldFieldPrefix(
       node, readField, writtenField, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldFieldPrefix(
         node, readField, writtenField, operator, arg);
   }
@@ -783,6 +880,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperFieldSetterPrefix(node, field, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldSetterPrefix(node, field, setter, operator, arg);
   }
 
@@ -799,6 +897,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperGetterSetterPrefix(node, getter, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperGetterSetterPrefix(node, getter, setter, operator, arg);
   }
 
@@ -817,6 +916,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperGetterFieldPrefix(node, getter, field, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperGetterFieldPrefix(node, getter, field, operator, arg);
   }
 
@@ -833,6 +933,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperMethodSetterPrefix(node, method, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperMethodSetterPrefix(node, method, setter, operator, arg);
   }
 
@@ -884,6 +985,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitDynamicPropertyPostfix(Send node, Node receiver,
       IncDecOperator operator, Selector getterSelector, Selector setterSelector,
       T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitDynamicPropertyPostfix(
         node, receiver, operator, getterSelector, setterSelector, arg);
   }
@@ -895,6 +997,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitParameterPostfix(
       Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitParameterPostfix(node, parameter, operator, arg);
   }
 
@@ -908,6 +1011,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitLocalVariablePostfix(Send node, LocalVariableElement variable,
       IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitLocalVariablePostfix(node, variable, operator, arg);
   }
 
@@ -937,6 +1041,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitThisPropertyPostfix(Send node, IncDecOperator operator,
       Selector getterSelector, Selector setterSelector, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitThisPropertyPostfix(
         node, operator, getterSelector, setterSelector, arg);
   }
@@ -951,6 +1056,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticFieldPostfix(node, field, operator, arg);
   }
 
@@ -966,6 +1072,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticGetterSetterPostfix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticGetterSetterPostfix(node, getter, setter, operator, arg);
   }
 
@@ -981,6 +1088,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitStaticMethodSetterPostfix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitStaticMethodSetterPostfix(node, getter, setter, operator, arg);
   }
 
@@ -992,6 +1100,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelFieldPostfix(node, field, operator, arg);
   }
 
@@ -1005,6 +1114,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelGetterSetterPostfix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelGetterSetterPostfix(node, getter, setter, operator, arg);
   }
 
@@ -1018,6 +1128,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitTopLevelMethodSetterPostfix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitTopLevelMethodSetterPostfix(node, method, setter, operator, arg);
   }
 
@@ -1032,6 +1143,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperFieldPostfix(node, field, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldPostfix(node, field, operator, arg);
   }
 
@@ -1051,6 +1163,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitSuperFieldFieldPostfix(
       node, readField, writtenField, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldFieldPostfix(
         node, readField, writtenField, operator, arg);
   }
@@ -1070,6 +1183,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperFieldSetterPostfix(node, field, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperFieldSetterPostfix(node, field, setter, operator, arg);
   }
 
@@ -1086,6 +1200,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperGetterSetterPostfix(node, getter, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperGetterSetterPostfix(node, getter, setter, operator, arg);
   }
 
@@ -1104,6 +1219,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperGetterFieldPostfix(node, getter, field, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperGetterFieldPostfix(node, getter, field, operator, arg);
   }
 
@@ -1120,6 +1236,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     }
   ///
   void visitSuperMethodSetterPostfix(node, method, setter, operator, arg) {
+    measurements[Metric.dynamicSend]++;
     super.visitSuperMethodSetterPostfix(node, method, setter, operator, arg);
   }
 
@@ -1169,6 +1286,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///     m() => c;
   ///
   void visitConstantGet(Send node, ConstantExpression constant, T arg) {
+    measurements[Metric.staticSend]++;
     super.visitConstantGet(node, constant, arg);
   }
 
@@ -1180,6 +1298,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitConstantInvoke(Send node, ConstantExpression constant,
       NodeList arguments, CallStructure callStreucture, T arg) {
+    measurements[Metric.staticSend]++;
     super.visitConstantInvoke(node, constant, arguments, callStreucture, arg);
   }
 
@@ -1342,6 +1461,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   ///
   void visitConstConstructorInvoke(
       NewExpression node, ConstructedConstantExpression constant, T arg) {
+    measurements[Metric.staticSend]++;
     super.visitConstConstructorInvoke(node, constant, arg);
   }
 
@@ -1358,6 +1478,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitGenerativeConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
+    measurements[Metric.newSend]++;
     super.visitGenerativeConstructorInvoke(
         node, constructor, type, arguments, callStructure, arg);
   }
@@ -1377,6 +1498,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitRedirectingGenerativeConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
+    measurements[Metric.newSend]++;
     super.visitRedirectingGenerativeConstructorInvoke(
         node, constructor, type, arguments, callStructure, arg);
   }
@@ -1395,6 +1517,7 @@ class _StatsVisitor<T> extends TraversalVisitor<Void, T>
   void visitFactoryConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
+    measurements[Metric.staticSend]++;
     super.visitFactoryConstructorInvoke(
         node, constructor, type, arguments, callStructure, arg);
   }
