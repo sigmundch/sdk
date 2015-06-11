@@ -31,7 +31,6 @@ class GlobalResult {
       system.libraries.add(library);
     } else {
       loose.libraries.add(library);
-      print('-> added ${library.uri}');
     }
   }
 
@@ -88,7 +87,8 @@ const List<Metric> _allMetrics = const [
   Metric.dynamicSend,
   Metric.virtualSend,
   Metric.staticSend,
-  Metric.newSend,
+  Metric.localSend,
+  //Metric.newSend,
   Metric.monomorphicSend,
 //  Metric.dynamicGet,
 //  Metric.dynamicSet,
@@ -132,15 +132,24 @@ class Metric {
       dynamicSend,
       virtualSend,
       staticSend,
-      newSend,
+      localSend,
+      nsmSend,
+      constructorSend,
       monomorphicSend,
   ]);
 
   static const Metric dynamicSend = const Metric('dynamic');
   static const Metric virtualSend = const Metric('virtual');
   static const Metric staticSend = const Metric('static');
-  static const Metric newSend = const Metric('new');
+  // doesn't really count, we might normalize results to remove these at the end
+  // includes reading a local variable, reading a parameter, reading a local
+  // function.
+  static const Metric localSend = const Metric('local');
+  static const Metric constructorSend = const Metric('constructor');
   static const Metric monomorphicSend = const Metric('monomorphic');
+
+  // no such method sends
+  static const Metric nsmSend = const Metric('nSM');
 
   // static const Metric dynamicSend = const GroupedMetric('dynamic', const [
   //     dynamicGet,
@@ -167,18 +176,18 @@ class Metric {
   //     monomorphicInvoke,
   // ]);
 
-  static const dynamicGet = const Metric('dynamic get');
-  static const dynamicSet = const Metric('dynamic set');
-  static const dynamicInvoke = const Metric('dynamic invoke');
-  static const virtualGet = const Metric('virtual get');
-  static const virtualSet = const Metric('virtual set');
-  static const virtualInvoke = const Metric('virtual invoke');
-  static const staticGet = const Metric('static get');
-  static const staticSet = const Metric('static set');
-  static const staticInvoke = const Metric('static invoke');
-  static const monomorphicGet = const Metric('monomorphic get');
-  static const monomorphicSet = const Metric('monomorphic set');
-  static const monomorphicInvoke = const Metric('monomorphic invoke');
+  //static const dynamicGet = const Metric('dynamic get');
+  //static const dynamicSet = const Metric('dynamic set');
+  //static const dynamicInvoke = const Metric('dynamic invoke');
+  //static const virtualGet = const Metric('virtual get');
+  //static const virtualSet = const Metric('virtual set');
+  //static const virtualInvoke = const Metric('virtual invoke');
+  //static const staticGet = const Metric('static get');
+  //static const staticSet = const Metric('static set');
+  //static const staticInvoke = const Metric('static invoke');
+  //static const monomorphicGet = const Metric('monomorphic get');
+  //static const monomorphicSet = const Metric('monomorphic set');
+  //static const monomorphicInvoke = const Metric('monomorphic invoke');
 }
 
 /// A metric that is subdivided in smaller metrics.
@@ -206,6 +215,12 @@ class Measurements {
 
   addFrom(Measurements other) {
     other.counters.forEach((k, v) => this[k] += v);
+  }
+
+  bool checkInvariant(Metric key) {
+    int total = this[key];
+    int submetricTotal = key.submetrics.fold(0, (n, m) => n + this[m]);
+    return total == submetricTotal;
   }
 }
 

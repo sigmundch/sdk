@@ -1,5 +1,7 @@
 library inference_stats;
 
+import 'dart:io';
+
 import '../stats/stats.dart';
 import '../stats/stats_viewer.dart';
 import '../dart_types.dart';
@@ -9,7 +11,8 @@ import '../resolution/resolution.dart';
 import '../resolution/semantic_visitor.dart';
 import '../tree/tree.dart';
 import '../universe/universe.dart' show Selector, CallStructure;
-import '../dart2jslib.dart' show CompilerTask, Compiler;
+import '../dart2jslib.dart'
+    show CompilerTask, Compiler, SourceSpan, MessageKind;
 import '../elements/visitor.dart' show ElementVisitor;
 import '../scanner/scannerlib.dart' show PartialElement;
 
@@ -21,8 +24,7 @@ class StatsBuilderTask extends CompilerTask {
 
   void run() {
     measure(() {
-      var visitor = new StatsBuilder();
-      print('collecting stats');
+      var visitor = new StatsBuilder(compiler);
       for (var lib in compiler.libraryLoader.libraries) {
         lib.accept(visitor, null);
       }
@@ -35,6 +37,8 @@ class StatsBuilderTask extends CompilerTask {
 /// from it.
 class StatsBuilder extends RecursiveElementVisitor {
   final GlobalResult result = new GlobalResult();
+  final Compiler compiler;
+  StatsBuilder(this.compiler);
   LibraryResult currentLib;
 
   merge(r) => null;
@@ -51,1549 +55,1659 @@ class StatsBuilder extends RecursiveElementVisitor {
     return super.visitClassElement(e, arg);
   }
 
-  static Set<String> _messages = new Set<String>();
-  static _debug(String message) {
-    if (_messages.add(message)) {
-      print('[33mdebug:[0m $message');
-    }
-  }
-
   visitFunctionElement(FunctionElement e, arg) {
-    if (!e.hasNode) {
-      // TODO: this may be wrong, no node could mean an empty constructor body
-      if (!e.library.isPlatformLibrary) print('>> $e: unreachable');
-      currentLib.functions.add(
-          new FunctionResult(e.name, const Measurements.unreachableFunction()));
-      return;
-    }
-    if (!e.hasResolvedAst) {
-      _debug('no resolved ast ${e.runtimeType}');
-      return;
-    }
-    var resolvedAst = e.resolvedAst;
-    var visitor = new _StatsVisitor(resolvedAst.elements);
-    if (resolvedAst.node == null) {
-      _debug('no node ${e.runtimeType}');
-      return;
-    }
-    var def = resolvedAst.elements.getFunctionDefinition(resolvedAst.node);
-    if (def == null) {
-      _debug('def is null? ${e.runtimeType}');
-      return;
-    }
-    resolvedAst.node.accept(visitor);
-    if (!e.library.isPlatformLibrary) print('>> $e: reachable, add ${visitor.measurements[Metric.functions]}');
-    currentLib.functions.add(new FunctionResult(e.name, visitor.measurements));
+    compiler.withCurrentElement(e, () {
+      if (e.library.isPlatformLibrary) return;
+      if (!e.hasNode) {
+        // TODO: this may be wrong, no node could mean an empty constructor body
+        if (!e.library.isPlatformLibrary) print('>> $e: unreachable');
+        currentLib.functions.add(new FunctionResult(
+            e.name, const Measurements.unreachableFunction()));
+        return;
+      }
+      if (!e.hasResolvedAst) {
+        _debug('no resolved ast ${e.runtimeType}');
+        return;
+      }
+      var resolvedAst = e.resolvedAst;
+      var visitor = new _StatsTraversalVisitor(compiler, resolvedAst.elements);
+      if (resolvedAst.node == null) {
+        _debug('no node ${e.runtimeType}');
+        return;
+      }
+      var def = resolvedAst.elements.getFunctionDefinition(resolvedAst.node);
+      if (def == null) {
+        _debug('def is null? ${e.runtimeType}');
+        return;
+      }
+      resolvedAst.node.accept(visitor);
+      if (!e.library.isPlatformLibrary) print(
+          '>> $e: reachable, add ${visitor.measurements[Metric.functions]}');
+      currentLib.functions
+          .add(new FunctionResult(e.name, visitor.measurements));
+    });
   }
 
   // TODO(sigmund): visit initializers too, they can contain `sends`.
 }
 
-/// Visitor that collects statistics about our understanding of a function.
-class _StatsVisitor<T> extends TraversalVisitor<Void, T>
-    implements SemanticSendVisitor {
-  _StatsVisitor(TreeElements elements) : super(elements);
-
+class _StatsVisitor<T> extends Visitor<T>
+    with SendResolverMixin, SemanticSendResolvedMixin, BaseImplementationOfStaticsMixin<Void, T>, BaseImplementationOfLocalsMixin<Void, T>, BaseImplementationOfDynamicsMixin<Void, T>, BaseImplementationOfCompoundsMixin<Void, T>, BaseImplementationOfIndexCompoundsMixin<Void, T> {
+  SemanticSendVisitor<Void, T> get sendVisitor => this;
   Measurements measurements = new Measurements.reachableFunction();
+  final Compiler compiler;
+  final TreeElements elements;
+  _StatsVisitor(this.compiler, this.elements);
 
-  apply(node, a) {
-    super.apply(node, a);
-  }
-
-  void visitNode(Node node) {
-    super.visitNode(node);
-  }
-
-  void visitSend(Send node) {
-    //print('visitsend: $node');
+  visitSend(Send node) {
+    _check(node, 'before');
     measurements[Metric.send]++;
+    if (node is SendSet && 
+        ((node.assignmentOperator != null && node.assignmentOperator.source != '=')
+        || node.isPrefix || node.isPostfix)) {
+      print('=> ${node.assignmentOperator.runtimeType}');
+      measurements[Metric.send] += 2;
+    }
     super.visitSend(node);
+    _check(node, 'after');
   }
 
-  /// Invocation of the [parameter] with [arguments].
-  ///
-  /// For instance:
-  ///     m(parameter) {
-  ///       parameter(null, 42);
-  ///     }
-  ///
-  void visitParameterInvoke(Send node, ParameterElement parameter,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitParameterInvoke(node, parameter, arguments, callStructure, arg);
-  }
+  handleLocal() => measurements[Metric.localSend]++;
+  handleDynamic() => measurements[Metric.dynamicSend]++;
+  handleCompoundDynamic() {
+    // Count 2 more for the get and set portions of the compound
+    measurements[Metric.send] += 2;
 
-  /// Invocation of the local variable [variable] with [arguments].
-  ///
-  /// For instance:
-  ///     m() {
-  ///       var variable;
-  ///       variable(null, 42);
-  ///     }
-  ///
-  void visitLocalVariableInvoke(Send node, LocalVariableElement variable,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    measurements[Metric.dynamicInvoke]++;
-    super.visitLocalVariableInvoke(
-        node, variable, arguments, callStructure, arg);
+    // TODO(sigmund): refine, the other two are likely better.
+    measurements[Metric.dynamicSend] += 3;
   }
+  handleVirtual() => measurements[Metric.virtualSend]++;
+  handleNSM() => measurements[Metric.nsmSend]++;
+  handleMonomorphic() => measurements[Metric.monomorphicSend]++;
+  handleStatic() => measurements[Metric.staticSend]++;
+  handleNoSend() => measurements[Metric.send]--;
 
-  /// Invocation of the local [function] with [arguments].
-  ///
-  /// For instance:
-  ///     m() {
-  ///       o(a, b) {}
-  ///       return o(null, 42);
-  ///     }
-  ///
-  void visitLocalFunctionInvoke(Send node, LocalFunctionElement function,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitLocalFunctionInvoke(
-        node, function, arguments, callStructure, arg);
-  }
+  // Constructors
 
-  /// Getter call on [receiver] of the property defined by [selector].
-  ///
-  /// For instance
-  ///     m(receiver) => receiver.foo;
-  ///
-  void visitDynamicPropertyGet(
-      Send node, Node receiver, Selector selector, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertyGet(node, receiver, selector, arg);
-  }
-
-  /// Setter call on [receiver] with argument [rhs] of the property defined by
-  /// [selector].
-  ///
-  /// For instance
-  ///     m(receiver) {
-  ///       receiver.foo = rhs;
-  ///     }
-  ///
-  void visitDynamicPropertySet(
-      SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertySet(node, receiver, selector, rhs, arg);
-  }
-
-  /// Invocation of the property defined by [selector] on [receiver] with
-  /// [arguments].
-  ///
-  /// For instance
-  ///     m(receiver) {
-  ///       receiver.foo(null, 42);
-  ///     }
-  ///
-  void visitDynamicPropertyInvoke(
-      Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertyInvoke(node, receiver, arguments, selector, arg);
-  }
-
-// --- we need it for analysis: this.foo can be on a child class, not sure if
-// inference encodes this kind of context sensitivity --
-  /// Getter call on `this` of the property defined by [selector].
-  ///
-  /// For instance
-  ///     class C {
-  ///       m() => this.foo;
-  ///     }
-  ///
-  /// or
-  ///
-  ///     class C {
-  ///       m() => foo;
-  ///     }
-  ///
-  void visitThisPropertyGet(Send node, Selector selector, A arg) {
-    measurements[Metric.virtualSend]++;
-    super.visitThisPropertyGet(node, selector, arg);
-  }
-
-  /// Setter call on `this` with argument [rhs] of the property defined by
-  /// [selector].
-  ///     class C {
-  ///       m() { this.foo = rhs; }
-  ///     }
-  ///
-  /// or
-  ///
-  ///     class C {
-  ///       m() { foo = rhs; }
-  ///     }
-  ///
-  void visitThisPropertySet(SendSet node, Selector selector, Node rhs, A arg) {
-    measurements[Metric.virtualSend]++;
-    super.visitThisPropertySet(node, selector, rhs, arg);
-  }
-
-  // --- needed in case [selector] is a field, not a method ---
-  // --- or is that handled by the expression invoke? TEST!! --
-  //
-  /// Invocation of the property defined by [selector] on `this` with
-  /// [arguments].
-  ///
-  /// For instance
-  ///     class C {
-  ///       m() { this.foo(null, 42); }
-  ///     }
-  ///
-  /// or
-  ///
-  ///     class C {
-  ///       m() { foo(null, 42); }
-  ///     }
-  ///
-  ///
-  void visitThisPropertyInvoke(
-      Send node, NodeList arguments, Selector selector, A arg) {
-    measurements[Metric.virtualSend]++;
-    super.visitThisPropertyInvoke(node, arguments, selector, arg);
-  }
-
-  /// Invocation of a [expression] with [arguments].
-  ///
-  /// For instance
-  ///     m() => (a, b){}(null, 42);
-  ///
-  void visitExpressionInvoke(Send node, Node expression, NodeList arguments,
-      Selector selector, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitExpressionInvoke(node, expression, arguments, selector, arg);
-  }
-
-  /// Invocation of the static [field] with [arguments].
-  ///
-  /// For instance
-  ///     class C {
-  ///       static var foo;
-  ///     }
-  ///     m() { C.foo(null, 42); }
-  ///
-  void visitStaticFieldInvoke(Send node, FieldElement field, NodeList arguments,
+  void visitAbstractClassConstructorInvoke(NewExpression node,
+      ConstructorElement element, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
-    // Depends on whether or not we know the closure/function type we are
-    // calling.
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticFieldInvoke(node, field, arguments, callStructure, arg);
+    handleConstructor();
   }
 
-  /// Invocation of the static [getter] with [arguments].
-  ///
-  /// For instance
-  ///     class C {
-  ///       static get foo => null;
-  ///     }
-  ///     m() { C.foo(null, 42; }
-  ///
-  void visitStaticGetterInvoke(Send node, FunctionElement getter,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitStaticGetterInvoke(node, getter, arguments, callStructure, arg);
+  void visitBoolFromEnvironmentConstructorInvoke(NewExpression node,
+      BoolFromEnvironmentConstantExpression constant, T arg) {
+    handleConstructor();
   }
 
-  /// Invocation of the top level [field] with [arguments].
-  ///
-  /// For instance
-  ///     var foo;
-  ///     m() { foo(null, 42); }
-  ///
-  void visitTopLevelFieldInvoke(Send node, FieldElement field,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitTopLevelFieldInvoke(node, field, arguments, callStructure, arg);
-  }
-
-  void visitTopLevelFunctionInvoke(
-      Send node,
-      MethodElement function,
-      NodeList arguments,
-      CallStructure callStructure,
-      T arg) {
-    measurements[Metric.staticSend]++;
-    super.visitTopLevelFunctionInvoke(node, function, arguments, callStructure, arg);
-  }
-
-  void visitTopLevelFunctionIncompatibleInvoke(
-      Send node,
-      MethodElement function,
-      NodeList arguments,
-      CallStructure callStructure,
-      A arg) {
-    measurements[Metric.staticSend]++;
-    super.visitTopLevelFunctionIncompatibleInvoke(node, function, arguments, callStructure, arg);
-  }
-
-  void visitUnresolvedSuperInvoke(
-      Send node,
-      Element function,
-      NodeList arguments,
-      Selector selector,
-      A arg) {
-    measurements[Metric.monomorphicSend]++;
-    super.visitUnresolvedSuperInvoke(node, function, arguments, selector, arg);
-  }
-
-  @override
-  R visitThisInvoke(
-      Send node,
-      NodeList arguments,
-      CallStructure callStructure,
-      A arg) {
-    measurements[Metric.monomorphicSend]++;
-    super.visitThisInvoke(node, arguments, callStructure, arg);
-  }
-
-  /// Invocation of the top level [getter] with [arguments].
-  ///
-  /// For instance
-  ///     get foo => null;
-  ///     m() { foo(null, 42); }
-  ///
-  void visitTopLevelGetterInvoke(Send node, FunctionElement getter,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitTopLevelGetterInvoke(
-        node, getter, arguments, callStructure, arg);
-  }
-
-  // shouldn't this be an errorMethod? ---
-  /// Invocation of the type literal for class [element] with [arguments].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m() => C(null, 42);
-  ///
-  void visitClassTypeLiteralInvoke(Send node, ConstantExpression constant,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitClassTypeLiteralInvoke(
-        node, constant, arguments, callStructure, arg);
-  }
-
-// ditto
-  /// Invocation of the type literal for typedef [element] with [arguments].
-  ///
-  /// For instance
-  ///     typedef F();
-  ///     m() => F(null, 42);
-  ///
-  void visitTypedefTypeLiteralInvoke(Send node, ConstantExpression constant,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitTypedefTypeLiteralInvoke(
-        node, constant, arguments, callStructure, arg);
-  }
-
-  /// Invocation of the type literal for type variable [element] with
-  /// [arguments].
-  ///
-  /// For instance
-  ///     class C<T> {
-  ///       m() { T(null, 42); }
-  ///     }
-  ///
-  void visitTypeVariableTypeLiteralInvoke(Send node,
-      TypeVariableElement element, NodeList arguments,
-      CallStructure callStructure, T arg) {
-    super.visitTypeVariableTypeLiteralInvoke(
-        node, element, arguments, callStructure, arg);
-  }
-
-// huh?
-  /// Invocation of the type literal for `dynamic` with [arguments].
-  ///
-  /// For instance
-  ///     m() { dynamic(null, 42); }
-  ///
-  void visitDynamicTypeLiteralInvoke(Send node, ConstantExpression constant,
-      NodeList arguments, CallStructure callStructure, T arg) {
-    super.visitDynamicTypeLiteralInvoke(
-        node, constant, arguments, callStructure, arg);
-  }
-
-  /// Binary expression `left operator right` where [operator] is a user
-  /// definable operator. Binary expressions using operator `==` are handled
-  /// by [visitEquals] and index operations `a[b]` are handled by [visitIndex].
-  ///
-  /// For instance:
-  ///     add(a, b) => a + b;
-  ///     sub(a, b) => a - b;
-  ///     mul(a, b) => a * b;
-  ///
-  void visitBinary(
-      Send node, Node left, BinaryOperator operator, Node right, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitBinary(node, left, operator, right, arg);
-  }
-
-  /// Index expression `receiver[index]`.
-  ///
-  /// For instance:
-  ///     lookup(a, b) => a[b];
-  ///
-  void visitIndex(Send node, Node receiver, Node index, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitIndex(node, receiver, index, arg);
-  }
-
-  /// Prefix operation on an index expression `operator receiver[index]` where
-  /// the operation is defined by [operator].
-  ///
-  /// For instance:
-  ///     lookup(a, b) => --a[b];
-  ///
-  void visitIndexPrefix(
-      Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitIndexPrefix(node, receiver, index, operator, arg);
-  }
-
-  /// Postfix operation on an index expression `receiver[index] operator` where
-  /// the operation is defined by [operator].
-  ///
-  /// For instance:
-  ///     lookup(a, b) => a[b]++;
-  ///
-  void visitIndexPostfix(
-      Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitIndexPostfix(node, receiver, index, operator, arg);
-  }
-
-  /// Binary expression `left == right`.
-  ///
-  /// For instance:
-  ///     neq(a, b) => a != b;
-  ///
-  void visitNotEquals(Send node, Node left, Node right, T arg) {
-    // refine also if we know that a or b are null only -> no invoke
-    measurements[Metric.dynamicSend]++;
-    super.visitNotEquals(node, left, right, arg);
-  }
-
-  /// Binary expression `left == right`.
-  ///
-  /// For instance:
-  ///     eq(a, b) => a == b;
-  ///
-  void visitEquals(Send node, Node left, Node right, T arg) {
-    // refine also if we know that a or b are null only -> no invoke
-    measurements[Metric.dynamicSend]++;
-    super.visitEquals(node, left, right, arg);
-  }
-
-  /// Unary expression `operator expression` where [operator] is a user
-  /// definable operator.
-  ///
-  /// For instance:
-  ///     neg(a, b) => -a;
-  ///     comp(a, b) => ~a;
-  ///
-  void visitUnary(Send node, UnaryOperator operator, Node expression, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitUnary(node, operator, expression, arg);
-  }
-
-  /// Unary expression `!expression`.
-  ///
-  /// For instance:
-  ///     not(a) => !a;
-  ///
-  void visitNot(Send node, Node expression, T arg) {
-    // nothing
-    super.visitNot(node, expression, arg);
-  }
-
-  /// Index set expression `receiver[index] = rhs`.
-  ///
-  /// For instance:
-  ///     m(receiver, index, rhs) => receiver[index] = rhs;
-  ///
-  void visitIndexSet(SendSet node, Node receiver, Node index, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitIndexSet(node, receiver, index, rhs, arg);
-  }
-
-  /// Logical and, &&, expression with operands [left] and [right].
-  ///
-  /// For instance
-  ///     m() => left && right;
-  ///
-  void visitLogicalAnd(Send node, Node left, Node right, T arg) {
-    // nothing
-    super.visitLogicalAnd(node, left, right, arg);
-  }
-
-  /// Logical or, ||, expression with operands [left] and [right].
-  ///
-  /// For instance
-  ///     m() => left || right;
-  ///
-  void visitLogicalOr(Send node, Node left, Node right, T arg) {
-    // nothing
-    super.visitLogicalOr(node, left, right, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] of the property on
-  /// [receiver] whose getter and setter are defined by [getterSelector] and
-  /// [setterSelector], respectively.
-  ///
-  /// For instance:
-  ///     m(receiver, rhs) => receiver.foo += rhs;
-  ///
-  void visitDynamicPropertyCompound(Send node, Node receiver,
-      AssignmentOperator operator, Node rhs, Selector getterSelector,
-      Selector setterSelector, T arg) {
-
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertyCompound(
-        node, receiver, operator, rhs, getterSelector, setterSelector, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] on a [parameter].
-  ///
-  /// For instance:
-  ///     m(parameter, rhs) => parameter += rhs;
-  ///
-  void visitParameterCompound(Send node, ParameterElement parameter,
-      AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitParameterCompound(node, parameter, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] on a local
-  /// [variable].
-  ///
-  /// For instance:
-  ///     m(rhs) {
-  ///       var variable;
-  ///       variable += rhs;
-  ///     }
-  ///
-  void visitLocalVariableCompound(Send node, LocalVariableElement variable,
-      AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitLocalVariableCompound(node, variable, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] on a static
-  /// [field].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static var field;
-  ///       m(rhs) => field += rhs;
-  ///     }
-  ///
-  void visitStaticFieldCompound(Send node, FieldElement field,
-      AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticFieldCompound(node, field, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] reading from a
-  /// static [getter] and writing to a static [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static get o => 0;
-  ///       static set o(_) {}
-  ///       m(rhs) => o += rhs;
-  ///     }
-  ///
-  void visitStaticGetterSetterCompound(Send node, FunctionElement getter,
-      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticGetterSetterCompound(
-        node, getter, setter, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] reading from a
-  /// static [method], that is, closurizing [method], and writing to a static
-  /// [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static o() {}
-  ///       static set o(_) {}
-  ///       m(rhs) => o += rhs;
-  ///     }
-  ///
-  void visitStaticMethodSetterCompound(Send node, FunctionElement method,
-      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticMethodSetterCompound(
-        node, method, setter, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] on a top level
-  /// [field].
-  ///
-  /// For instance:
-  ///     var field;
-  ///     m(rhs) => field += rhs;
-  ///
-  void visitTopLevelFieldCompound(Send node, FieldElement field,
-      AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelFieldCompound(node, field, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] reading from a
-  /// top level [getter] and writing to a top level [setter].
-  ///
-  /// For instance:
-  ///     get o => 0;
-  ///     set o(_) {}
-  ///     m(rhs) => o += rhs;
-  ///
-  void visitTopLevelGetterSetterCompound(Send node, FunctionElement getter,
-      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelGetterSetterCompound(
-        node, getter, setter, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] reading from a
-  /// top level [method], that is, closurizing [method], and writing to a top
-  /// level [setter].
-  ///
-  /// For instance:
-  ///     o() {}
-  ///     set o(_) {}
-  ///     m(rhs) => o += rhs;
-  ///
-  void visitTopLevelMethodSetterCompound(Send node, FunctionElement method,
-      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelMethodSetterCompound(
-        node, method, setter, operator, rhs, arg);
-  }
-
-  /// Compound assignment expression of [rhs] with [operator] on the index
-  /// operators of [receiver] whose getter and setter are defined by
-  /// [getterSelector] and [setterSelector], respectively.
-  ///
-  /// For instance:
-  ///     m(receiver, index, rhs) => receiver[index] += rhs;
-  ///
-  void visitCompoundIndexSet(SendSet node, Node receiver, Node index,
-      AssignmentOperator operator, Node rhs, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitCompoundIndexSet(node, receiver, index, operator, rhs, arg);
-  }
-
-  /// Prefix expression with [operator] of the property on [receiver] whose
-  /// getter and setter are defined by [getterSelector] and [setterSelector],
-  /// respectively.
-  ///
-  /// For instance:
-  ///     m(receiver) => ++receiver.foo;
-  ///
-  void visitDynamicPropertyPrefix(Send node, Node receiver,
-      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
-      T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertyPrefix(
-        node, receiver, operator, getterSelector, setterSelector, arg);
-  }
-
-  /// Prefix expression with [operator] on a [parameter].
-  ///
-  /// For instance:
-  ///     m(parameter) => ++parameter;
-  ///
-  void visitParameterPrefix(
-      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitParameterPrefix(node, parameter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] on a local [variable].
-  ///
-  /// For instance:
-  ///     m() {
-  ///     var variable;
-  ///      ++variable;
-  ///     }
-  ///
-  void visitLocalVariablePrefix(Send node, LocalVariableElement variable,
-      IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitLocalVariablePrefix(node, variable, operator, arg);
-  }
-
-  /// Prefix expression with [operator] of the property on `this` whose getter
-  /// and setter are defined by [getterSelector] and [setterSelector],
-  /// respectively.
-  ///
-  /// For instance:
-  ///     class C {
-  ///       m() => ++foo;
-  ///     }
-  /// or
-  ///     class C {
-  ///       m() => ++this.foo;
-  ///     }
-  ///
-  void visitThisPropertyPrefix(Send node, IncDecOperator operator,
-      Selector getterSelector, Selector setterSelector, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitThisPropertyPrefix(
-        node, operator, getterSelector, setterSelector, arg);
-  }
-
-  // ----------------------
-
-  /// Prefix expression with [operator] on a static [field].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static var field;
-  ///       m() => ++field;
-  ///     }
-  ///
-  void visitStaticFieldPrefix(
-      Send node, FieldElement field, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticFieldPrefix(node, field, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a static [getter] and
-  /// writing to a static [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static get o => 0;
-  ///       static set o(_) {}
-  ///       m() => ++o;
-  ///     }
-  ///
-  void visitStaticGetterSetterPrefix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticGetterSetterPrefix(node, getter, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a static [method], that is,
-  /// closurizing [method], and writing to a static [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static o() {}
-  ///       static set o(_) {}
-  ///       m() => ++o;
-  ///     }
-  ///
-  void visitStaticMethodSetterPrefix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticMethodSetterPrefix(node, getter, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] on a top level [field].
-  ///
-  /// For instance:
-  ///     var field;
-  ///     m() => ++field;
-  ///
-  void visitTopLevelFieldPrefix(
-      Send node, FieldElement field, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelFieldPrefix(node, field, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a top level [getter] and
-  /// writing to a top level [setter].
-  ///
-  /// For instance:
-  ///     get o => 0;
-  ///     set o(_) {}
-  ///     m() => ++o;
-  ///
-  void visitTopLevelGetterSetterPrefix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelGetterSetterPrefix(node, getter, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a top level [method], that
-  /// is, closurizing [method], and writing to a top level [setter].
-  ///
-  /// For instance:
-  ///     o() {}
-  ///     set o(_) {}
-  ///     m() => ++o;
-  ///
-  void visitTopLevelMethodSetterPrefix(Send node, FunctionElement method,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelMethodSetterPrefix(node, method, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] on a super [field].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       var field;
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.field;
-  ///     }
-  ///
-  void visitSuperFieldPrefix(node, field, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldPrefix(node, field, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from the super field [readField]
-  /// and writing to the different super field [writtenField].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       final field;
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.field;
-  ///     }
-  ///
-  void visitSuperFieldFieldPrefix(
-      node, readField, writtenField, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldFieldPrefix(
-        node, readField, writtenField, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a super [field] and writing
-  /// to a super [setter].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       set field(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.field;
-  ///     }
-  ///
-  void visitSuperFieldSetterPrefix(node, field, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldSetterPrefix(node, field, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a super [getter] and
-  /// writing to a super [setter].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       get field => 0;
-  ///       set field(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.field;
-  ///     }
-  ///
-  void visitSuperGetterSetterPrefix(node, getter, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperGetterSetterPrefix(node, getter, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a super [getter] and
-  /// writing to a super [field].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       get field => 0;
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.field;
-  ///     }
-  ///
-  void visitSuperGetterFieldPrefix(node, getter, field, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperGetterFieldPrefix(node, getter, field, operator, arg);
-  }
-
-  /// Prefix expression with [operator] reading from a super [method], is,
-  /// closurizing [method], and writing to a super [setter].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       o() {}
-  ///       set o(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => ++super.o;
-  ///     }
-  ///
-  void visitSuperMethodSetterPrefix(node, method, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperMethodSetterPrefix(node, method, setter, operator, arg);
-  }
-
-  /// Prefix expression with [operator] on a type literal for a class [element].
-  ///
-  /// For instance:
-  ///     class C {}
-  ///     m() => ++C;
-  ///
-  void errorClassTypeLiteralPrefix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Prefix expression with [operator] on a type literal for a typedef
-  /// [element].
-  ///
-  /// For instance:
-  ///     typedef F();
-  ///     m() => ++F;
-  ///
-  void errorTypedefTypeLiteralPrefix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Prefix expression with [operator] on a type literal for a type variable
-  /// [element].
-  ///
-  /// For instance:
-  ///     class C<T> {
-  ///       m() => ++T;
-  ///     }
-  ///
-  void errorTypeVariableTypeLiteralPrefix(
-      Send node, TypeVariableElement element, IncDecOperator operator, T arg) {}
-
-  /// Prefix expression with [operator] on the type literal for `dynamic`.
-  ///
-  /// For instance:
-  ///     m() => ++dynamic;
-  ///
-  void errorDynamicTypeLiteralPrefix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Postfix expression with [operator] of the property on [receiver] whose
-  /// getter and setter are defined by [getterSelector] and [setterSelector],
-  /// respectively.
-  ///
-  /// For instance:
-  ///     m(receiver) => receiver.foo++;
-  ///
-  void visitDynamicPropertyPostfix(Send node, Node receiver,
-      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
-      T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitDynamicPropertyPostfix(
-        node, receiver, operator, getterSelector, setterSelector, arg);
-  }
-
-  /// Postfix expression with [operator] on a [parameter].
-  ///
-  /// For instance:
-  ///     m(parameter) => parameter++;
-  ///
-  void visitParameterPostfix(
-      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitParameterPostfix(node, parameter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] on a local [variable].
-  ///
-  /// For instance:
-  ///     m() {
-  ///     var variable;
-  ///      variable++;
-  ///     }
-  ///
-  void visitLocalVariablePostfix(Send node, LocalVariableElement variable,
-      IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitLocalVariablePostfix(node, variable, operator, arg);
-  }
-
-  /// Postfix expression with [operator] on a local [function].
-  ///
-  /// For instance:
-  ///     m() {
-  ///     function() {}
-  ///      function++;
-  ///     }
-  ///
-  void errorLocalFunctionPostfix(Send node, LocalFunctionElement function,
-      IncDecOperator operator, T arg) {}
-
-  /// Postfix expression with [operator] of the property on `this` whose getter
-  /// and setter are defined by [getterSelector] and [setterSelector],
-  /// respectively.
-  ///
-  /// For instance:
-  ///     class C {
-  ///       m() => foo++;
-  ///     }
-  /// or
-  ///     class C {
-  ///       m() => this.foo++;
-  ///     }
-  ///
-  void visitThisPropertyPostfix(Send node, IncDecOperator operator,
-      Selector getterSelector, Selector setterSelector, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitThisPropertyPostfix(
-        node, operator, getterSelector, setterSelector, arg);
-  }
-
-  /// Postfix expression with [operator] on a static [field].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static var field;
-  ///       m() => field++;
-  ///     }
-  ///
-  void visitStaticFieldPostfix(
-      Send node, FieldElement field, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticFieldPostfix(node, field, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a static [getter] and
-  /// writing to a static [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static get o => 0;
-  ///       static set o(_) {}
-  ///       m() => o++;
-  ///     }
-  ///
-  void visitStaticGetterSetterPostfix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticGetterSetterPostfix(node, getter, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a static [method], that
-  /// is, closurizing [method], and writing to a static [setter].
-  ///
-  /// For instance:
-  ///     class C {
-  ///       static o() {}
-  ///       static set o(_) {}
-  ///       m() => o++;
-  ///     }
-  ///
-  void visitStaticMethodSetterPostfix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitStaticMethodSetterPostfix(node, getter, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] on a top level [field].
-  ///
-  /// For instance:
-  ///     var field;
-  ///     m() => field++;
-  ///
-  void visitTopLevelFieldPostfix(
-      Send node, FieldElement field, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelFieldPostfix(node, field, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a top level [getter] and
-  /// writing to a top level [setter].
-  ///
-  /// For instance:
-  ///     get o => 0;
-  ///     set o(_) {}
-  ///     m() => o++;
-  ///
-  void visitTopLevelGetterSetterPostfix(Send node, FunctionElement getter,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelGetterSetterPostfix(node, getter, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a top level [method], that
-  /// is, closurizing [method], and writing to a top level [setter].
-  ///
-  /// For instance:
-  ///     o() {}
-  ///     set o(_) {}
-  ///     m() => o++;
-  ///
-  void visitTopLevelMethodSetterPostfix(Send node, FunctionElement method,
-      FunctionElement setter, IncDecOperator operator, T arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitTopLevelMethodSetterPostfix(node, method, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] on a super [field].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       var field;
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.field++;
-  ///     }
-  ///
-  void visitSuperFieldPostfix(node, field, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldPostfix(node, field, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from the super field
-  /// [readField] and writing to the different super field [writtenField].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       final field;
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.field++;
-  ///     }
-  ///
-  void visitSuperFieldFieldPostfix(
-      node, readField, writtenField, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldFieldPostfix(
-        node, readField, writtenField, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a super [field] and
-  /// writing to a super [setter].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       set field(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.field++;
-  ///     }
-  ///
-  void visitSuperFieldSetterPostfix(node, field, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperFieldSetterPostfix(node, field, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a super [getter] and
-  /// writing to a super [setter].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       get field => 0;
-  ///       set field(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.field++;
-  ///     }
-  ///
-  void visitSuperGetterSetterPostfix(node, getter, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperGetterSetterPostfix(node, getter, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a super [getter] and
-  /// writing to a super [field].
-  ///
-  /// For instance:
-  ///     class A {
-  ///       var field;
-  ///     }
-  ///     class B extends A {
-  ///       get field => 0;
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.field++;
-  ///     }
-  ///
-  void visitSuperGetterFieldPostfix(node, getter, field, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperGetterFieldPostfix(node, getter, field, operator, arg);
-  }
-
-  /// Postfix expression with [operator] reading from a super [method], is,
-  /// closurizing [method], and writing to a super [setter].
-  ///
-  /// For instance:
-  ///     class B {
-  ///       o() {}
-  ///       set o(_) {}
-  ///     }
-  ///     class C extends B {
-  ///       m() => super.o++;
-  ///     }
-  ///
-  void visitSuperMethodSetterPostfix(node, method, setter, operator, arg) {
-    measurements[Metric.dynamicSend]++;
-    super.visitSuperMethodSetterPostfix(node, method, setter, operator, arg);
-  }
-
-  /// Postfix expression with [operator] on a type literal for a class
-  /// [element].
-  ///
-  /// For instance:
-  ///     class C {}
-  ///     m() => C++;
-  ///
-  void errorClassTypeLiteralPostfix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Postfix expression with [operator] on a type literal for a typedef
-  /// [element].
-  ///
-  /// For instance:
-  ///     typedef F();
-  ///     m() => F++;
-  ///
-  void errorTypedefTypeLiteralPostfix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Postfix expression with [operator] on a type literal for a type variable
-  /// [element].
-  ///
-  /// For instance:
-  ///     class C<T> {
-  ///       m() => T++;
-  ///     }
-  ///
-  void errorTypeVariableTypeLiteralPostfix(
-      Send node, TypeVariableElement element, IncDecOperator operator, T arg) {}
-
-  /// Postfix expression with [operator] on the type literal for `dynamic`.
-  ///
-  /// For instance:
-  ///     m() => dynamic++;
-  ///
-  void errorDynamicTypeLiteralPostfix(
-      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {}
-
-  /// Read of the [constant].
-  ///
-  /// For instance
-  ///     const c = c;
-  ///     m() => c;
-  ///
-  void visitConstantGet(Send node, ConstantExpression constant, T arg) {
-    measurements[Metric.staticSend]++;
-    super.visitConstantGet(node, constant, arg);
-  }
-
-  /// Invocation of the [constant] with [arguments].
-  ///
-  /// For instance
-  ///     const c = null;
-  ///     m() => c(null, 42);
-  ///
-  void visitConstantInvoke(Send node, ConstantExpression constant,
-      NodeList arguments, CallStructure callStreucture, T arg) {
-    measurements[Metric.staticSend]++;
-    super.visitConstantInvoke(node, constant, arguments, callStreucture, arg);
-  }
-
-  /// Read of the unresolved [element].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => unresolved;
-  ///     m2() => prefix.unresolved;
-  ///     m3() => Unresolved.foo;
-  ///     m4() => unresolved.foo;
-  ///     m5() => unresolved.Foo.bar;
-  ///     m6() => C.unresolved;
-  ///     m7() => prefix.C.unresolved;
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedGet(Send node, Element element, T arg) {}
-
-  /// Assignment of [rhs] to the unresolved [element].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => unresolved = 42;
-  ///     m2() => prefix.unresolved = 42;
-  ///     m3() => Unresolved.foo = 42;
-  ///     m4() => unresolved.foo = 42;
-  ///     m5() => unresolved.Foo.bar = 42;
-  ///     m6() => C.unresolved = 42;
-  ///     m7() => prefix.C.unresolved = 42;
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedSet(Send node, Element element, Node rhs, T arg) {}
-
-  /// Invocation of the unresolved [element] with [arguments].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => unresolved(null, 42);
-  ///     m2() => prefix.unresolved(null, 42);
-  ///     m3() => Unresolved.foo(null, 42);
-  ///     m4() => unresolved.foo(null, 42);
-  ///     m5() => unresolved.Foo.bar(null, 42);
-  ///     m6() => C.unresolved(null, 42);
-  ///     m7() => prefix.C.unresolved(null, 42);
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedInvoke(Send node, Element element, NodeList arguments,
-      Selector selector, T arg) {}
-
-  /// Compound assignment of [rhs] on the unresolved [element].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => unresolved += 42;
-  ///     m2() => prefix.unresolved += 42;
-  ///     m3() => Unresolved.foo += 42;
-  ///     m4() => unresolved.foo += 42;
-  ///     m5() => unresolved.Foo.bar += 42;
-  ///     m6() => C.unresolved += 42;
-  ///     m7() => prefix.C.unresolved += 42;
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedCompound(Send node, Element element,
-      AssignmentOperator operator, Node rhs, T arg) {}
-
-  /// Prefix operation on the unresolved [element].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => ++unresolved;
-  ///     m2() => ++prefix.unresolved;
-  ///     m3() => ++Unresolved.foo;
-  ///     m4() => ++unresolved.foo;
-  ///     m5() => ++unresolved.Foo.bar;
-  ///     m6() => ++C.unresolved;
-  ///     m7() => ++prefix.C.unresolved;
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedPrefix(
-      Send node, Element element, IncDecOperator operator, T arg) {}
-
-  /// Postfix operation on the unresolved [element].
-  ///
-  /// For instance
-  ///     class C {}
-  ///     m1() => unresolved++;
-  ///     m2() => prefix.unresolved++;
-  ///     m3() => Unresolved.foo++;
-  ///     m4() => unresolved.foo++;
-  ///     m5() => unresolved.Foo.bar++;
-  ///     m6() => C.unresolved++;
-  ///     m7() => prefix.C.unresolved++;
-  ///
-  // TODO(johnniwinther): Split the cases in which a prefix is resolved.
-  void errorUnresolvedPostfix(
-      Send node, Element element, IncDecOperator operator, T arg) {}
-
-  /// Index set operation on the unresolved super [element].
-  ///
-  /// For instance
-  ///     class B {
-  ///     }
-  ///     class C extends B {
-  ///       m() => super[1] = 42;
-  ///     }
-  ///
-  void errorUnresolvedSuperIndexSet(node, element, index, rhs, arg) {}
-
-  /// Compound index set operation on the unresolved super [element].
-  ///
-  /// For instance
-  ///     class B {
-  ///     }
-  ///     class C extends B {
-  ///       m() => super[1] += 42;
-  ///     }
-  ///
-  // TODO(johnniwinther): Split this case into unresolved getter/setter cases.
-  void errorUnresolvedSuperCompoundIndexSet(
-      node, element, index, operator, rhs, arg) {}
-
-  /// Unary operation on the unresolved super [element].
-  ///
-  /// For instance
-  ///     class B {
-  ///     }
-  ///     class C extends B {
-  ///       m() => -super;
-  ///     }
-  ///
-  void errorUnresolvedSuperUnary(node, operator, element, arg) {}
-
-  /// Binary operation on the unresolved super [element].
-  ///
-  /// For instance
-  ///     class B {
-  ///     }
-  ///     class C extends B {
-  ///       m() => super + 42;
-  ///     }
-  ///
-  void errorUnresolvedSuperBinary(node, element, operator, argument, arg) {}
-
-  /// Invocation of an undefined unary [operator] on [expression].
-  void errorUndefinedUnaryExpression(
-      Send node, Operator operator, Node expression, T arg) {}
-
-  /// Invocation of an undefined unary [operator] with operands
-  /// [left] and [right].
-  void errorUndefinedBinaryExpression(
-      Send node, Node left, Operator operator, Node right, T arg) {}
-
-  /// Const invocation of a [constructor].
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     const C(a, b);
-  ///   }
-  ///   m() => const C<int>(true, 42);
-  ///
   void visitConstConstructorInvoke(
       NewExpression node, ConstructedConstantExpression constant, T arg) {
-    measurements[Metric.staticSend]++;
-    super.visitConstConstructorInvoke(node, constant, arg);
+    handleConstructor();
   }
 
-  /// Invocation of a generative [constructor] on [type] with [arguments].
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     C(a, b);
-  ///   }
-  ///   m() => new C<int>(true, 42);
-  ///
-  /// where [type] is `C<int>`.
-  ///
   void visitGenerativeConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
-    measurements[Metric.newSend]++;
-    super.visitGenerativeConstructorInvoke(
-        node, constructor, type, arguments, callStructure, arg);
+    handleConstructor();
   }
 
-  /// Invocation of a redirecting generative [constructor] on [type] with
-  /// [arguments].
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     C(a, b) : this._(b, a);
-  ///     C._(b, a);
-  ///   }
-  ///   m() => new C<int>(true, 42);
-  ///
-  /// where [type] is `C<int>`.
-  ///
-  void visitRedirectingGenerativeConstructorInvoke(NewExpression node,
-      ConstructorElement constructor, InterfaceType type, NodeList arguments,
-      CallStructure callStructure, T arg) {
-    measurements[Metric.newSend]++;
-    super.visitRedirectingGenerativeConstructorInvoke(
-        node, constructor, type, arguments, callStructure, arg);
+  void visitIntFromEnvironmentConstructorInvoke(NewExpression node,
+      IntFromEnvironmentConstantExpression constant, T arg) {
+    handleConstructor();
   }
 
-  /// Invocation of a factory [constructor] on [type] with [arguments].
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     factory C(a, b) => new C<T>._(b, a);
-  ///     C._(b, a);
-  ///   }
-  ///   m() => new C<int>(true, 42);
-  ///
-  /// where [type] is `C<int>`.
-  ///
-  void visitFactoryConstructorInvoke(NewExpression node,
-      ConstructorElement constructor, InterfaceType type, NodeList arguments,
-      CallStructure callStructure, T arg) {
-    measurements[Metric.staticSend]++;
-    super.visitFactoryConstructorInvoke(
-        node, constructor, type, arguments, callStructure, arg);
-  }
-
-  /// Invocation of a factory [constructor] on [type] with [arguments] where
-  /// [effectiveTarget] and [effectiveTargetType] are the constructor effective
-  /// invoked and its type, respectively.
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     factory C(a, b) = C<int>.a;
-  ///     factory C.a(a, b) = C<C<T>>.b;
-  ///     C.b(a, b);
-  ///   }
-  ///   m() => new C<double>(true, 42);
-  ///
-  /// where [type] is `C<double>`, [effectiveTarget] is `C.b` and
-  /// [effectiveTargetType] is `C<C<int>>`.
-  ///
   void visitRedirectingFactoryConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type,
       ConstructorElement effectiveTarget, InterfaceType effectiveTargetType,
-      NodeList arguments, CallStructure callStructure, T arg) {}
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleConstructor();
+  }
 
-  /// Invocation of an unresolved [constructor] on [type] with [arguments].
-  ///
-  /// For instance
-  ///   class C<T> {
-  ///     C();
-  ///   }
-  ///   m() => new C<int>.unresolved(true, 42);
-  ///
-  /// where [type] is `C<int>`.
-  ///
-  // TODO(johnniwinther): Update [type] to be [InterfaceType] when this is no
-  // longer a catch-all clause for the erroneous constructor invocations.
-  void errorUnresolvedConstructorInvoke(NewExpression node, Element constructor,
-      DartType type, NodeList arguments, Selector selector, T arg) {}
-
-  /// Invocation of a constructor on an unresolved [type] with [arguments].
-  ///
-  /// For instance
-  ///   m() => new Unresolved(true, 42);
-  ///
-  /// where [type] is the malformed type `Unresolved`.
-  ///
-  void errorUnresolvedClassConstructorInvoke(NewExpression node,
-      Element element, MalformedType type, NodeList arguments,
-      Selector selector, T arg) {}
-
-  /// Invocation of a constructor on an abstract [type] with [arguments].
-  ///
-  /// For instance
-  ///   m() => new Unresolved(true, 42);
-  ///
-  /// where [type] is the malformed type `Unresolved`.
-  ///
-  void errorAbstractClassConstructorInvoke(NewExpression node,
-      ConstructorElement element, InterfaceType type, NodeList arguments,
-      CallStructure callStructure, T arg) {}
-
-  /// Invocation of a factory [constructor] on [type] with [arguments] where
-  /// [effectiveTarget] and [effectiveTargetType] are the constructor effective
-  /// invoked and its type, respectively.
-  ///
-  /// For instance
-  ///   class C {
-  ///     factory C(a, b) = Unresolved;
-  ///     factory C.a(a, b) = C.unresolved;
-  ///   }
-  ///   m1() => new C(true, 42);
-  ///   m2() => new C.a(true, 42);
-  ///
-  void errorUnresolvedRedirectingFactoryConstructorInvoke(NewExpression node,
+  void visitRedirectingGenerativeConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
-      Selector selector, T arg) {}
+      CallStructure callStructure, T arg) {
+    handleConstructor();
+  }
+
+  void visitStringFromEnvironmentConstructorInvoke(NewExpression node,
+      StringFromEnvironmentConstantExpression constant, T arg) {
+    handleConstructor();
+  }
+
+  // Dynamic sends
+
+  void visitBinary(
+      Send node, Node left, BinaryOperator operator, Node right, T arg) {
+    handleDynamic();
+  }
+
+  void visitCompoundIndexSet(SendSet node, Node receiver, Node index,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleDynamic(); // t1 = receiver[index]
+    handleDynamic(); // t2 = t1 op rhs
+    handleDynamic(); // receiver[index] = t2
+  }
+
+  void visitDynamicPropertyCompound(Send node, Node receiver,
+      AssignmentOperator operator, Node rhs, Selector getterSelector,
+      Selector setterSelector, T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitDynamicPropertyGet(
+      Send node, Node receiver, Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitDynamicPropertyInvoke(
+      Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitDynamicPropertyPostfix(Send node, Node receiver,
+      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
+      T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitDynamicPropertyPrefix(Send node, Node receiver,
+      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
+      T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitDynamicPropertySet(
+      SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
+    handleDynamic();
+  }
+
+  void visitEquals(Send node, Node left, Node right, T arg) {
+    handleDynamic();
+  }
+
+  void visitExpressionInvoke(Send node, Node expression, NodeList arguments,
+      Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertyCompound(Send node, Node receiver,
+      AssignmentOperator operator, Node rhs, Selector getterSelector,
+      Selector setterSelector, T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertyGet(
+      Send node, Node receiver, Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertyInvoke(
+      Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertyPostfix(Send node, Node receiver,
+      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
+      T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertyPrefix(Send node, Node receiver,
+      IncDecOperator operator, Selector getterSelector, Selector setterSelector,
+      T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitIfNotNullDynamicPropertySet(
+      SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
+    handleDynamic();
+  }
+
+  void visitIndex(Send node, Node receiver, Node index, T arg) {
+    handleDynamic();
+  }
+
+  void visitIndexPostfix(
+      Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitIndexPrefix(
+      Send node, Node receiver, Node index, IncDecOperator operator, T arg) {
+    handleDynamic();
+    handleDynamic();
+    handleDynamic();
+  }
+
+  void visitIndexSet(SendSet node, Node receiver, Node index, Node rhs, T arg) {
+    handleDynamic();
+  }
+
+  void visitLocalVariableCompound(Send node, LocalVariableElement variable,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitLocalVariableInvoke(Send node, LocalVariableElement variable,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitLocalVariablePostfix(Send node, LocalVariableElement variable,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitLocalVariablePrefix(Send node, LocalVariableElement variable,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitNotEquals(Send node, Node left, Node right, T arg) {
+    handleDynamic();
+  }
+
+  void visitParameterCompound(Send node, ParameterElement parameter,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitParameterInvoke(Send node, ParameterElement parameter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitParameterPostfix(
+      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitParameterPrefix(
+      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleLocal();
+  }
+
+  void visitStaticFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitStaticFieldInvoke(Send node, FieldElement field, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitStaticFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitStaticFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitStaticGetterInvoke(Send node, FunctionElement getter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitStaticGetterSetterCompound(Send node, FunctionElement getter,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitStaticGetterSetterPostfix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitStaticGetterSetterPrefix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitSuperFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldFieldCompound(Send node, FieldElement readField,
+      FieldElement writtenField, AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldFieldPostfix(Send node, FieldElement readField,
+      FieldElement writtenField, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldFieldPrefix(Send node, FieldElement readField,
+      FieldElement writtenField, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldInvoke(Send node, FieldElement field, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitSuperFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldSetterCompound(Send node, FieldElement field,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldSetterPostfix(Send node, FieldElement field,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldSetterPrefix(Send node, FieldElement field,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterFieldCompound(Send node, FunctionElement getter,
+      FieldElement field, AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterFieldPostfix(Send node, FunctionElement getter,
+      FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterFieldPrefix(Send node, FunctionElement getter,
+      FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterInvoke(Send node, FunctionElement getter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitSuperGetterSetterCompound(Send node, FunctionElement getter,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterSetterPostfix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterSetterPrefix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperIndexPostfix(Send node, MethodElement indexFunction,
+      MethodElement indexSetFunction, Node index, IncDecOperator operator,
+      T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperIndexPrefix(Send node, MethodElement indexFunction,
+      MethodElement indexSetFunction, Node index, IncDecOperator operator,
+      T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleMonomorphic();
+  }
+
+  void visitSuperMethodSetterCompound(Send node, FunctionElement method,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleNSM();
+    handleMonomorphic();
+  }
+
+  void visitSuperMethodSetterPostfix(Send node, FunctionElement method,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleNSM();
+    handleMonomorphic();
+  }
+
+  void visitSuperMethodSetterPrefix(Send node, FunctionElement method,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleNSM();
+    handleMonomorphic();
+  }
+
+  void visitThisPropertyCompound(Send node, AssignmentOperator operator,
+      Node rhs, Selector getterSelector, Selector setterSelector, T arg) {
+    handleVirtual();
+    handleDynamic();
+    handleVirtual();
+  }
+
+  void visitThisPropertyInvoke(
+      Send node, NodeList arguments, Selector selector, T arg) {
+    handleDynamic();
+  }
+
+  void visitThisPropertyPostfix(Send node, IncDecOperator operator,
+      Selector getterSelector, Selector setterSelector, T arg) {
+    handleVirtual();
+    handleDynamic();
+    handleVirtual();
+  }
+
+  void visitThisPropertyPrefix(Send node, IncDecOperator operator,
+      Selector getterSelector, Selector setterSelector, T arg) {
+    handleVirtual();
+    handleDynamic();
+    handleVirtual();
+  }
+
+  void visitTopLevelFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitTopLevelFieldInvoke(Send node, FieldElement field,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitTopLevelFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitTopLevelFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitTopLevelGetterInvoke(Send node, FunctionElement getter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleDynamic();
+  }
+
+  void visitTopLevelGetterSetterCompound(Send node, FunctionElement getter,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitTopLevelGetterSetterPostfix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitTopLevelGetterSetterPrefix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleStatic();
+  }
+
+  void visitUnary(Send node, UnaryOperator operator, Node expression, T arg) {
+    handleDynamic();
+  }
+
+  // Local variable sends
+
+  void visitLocalFunctionGet(Send node, LocalFunctionElement function, T arg) {
+    handleLocal();
+  }
+
+  void visitLocalFunctionInvoke(Send node, LocalFunctionElement function,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleLocal();
+  }
+
+  void visitLocalVariableGet(Send node, LocalVariableElement variable, T arg) {
+    handleLocal();
+  }
+
+  void visitLocalVariableSet(
+      SendSet node, LocalVariableElement variable, Node rhs, T arg) {
+    handleLocal();
+  }
+
+  void visitParameterGet(Send node, ParameterElement parameter, T arg) {
+    handleLocal();
+  }
+
+  void visitParameterSet(
+      SendSet node, ParameterElement parameter, Node rhs, T arg) {
+    handleLocal();
+  }
+
+  // Super monomorphic sends
+
+  void visitSuperBinary(Send node, FunctionElement function,
+      BinaryOperator operator, Node argument, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperEquals(
+      Send node, FunctionElement function, Node argument, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldGet(Send node, FieldElement field, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperFieldSet(SendSet node, FieldElement field, Node rhs, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterGet(Send node, FunctionElement getter, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperGetterSet(
+      SendSet node, FunctionElement getter, Node rhs, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperIndex(Send node, FunctionElement function, Node index, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperIndexSet(
+      SendSet node, FunctionElement function, Node index, Node rhs, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperMethodGet(Send node, MethodElement method, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperMethodInvoke(Send node, MethodElement method,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperNotEquals(
+      Send node, FunctionElement function, Node argument, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperSetterSet(
+      SendSet node, FunctionElement setter, Node rhs, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitSuperUnary(
+      Send node, UnaryOperator operator, FunctionElement function, T arg) {
+    handleMonomorphic();
+  }
+
+// Statically known "no such method" sends
+
+  void visitConstructorIncompatibleInvoke(NewExpression node,
+      ConstructorElement constructor, InterfaceType type, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitFinalLocalVariableCompound(Send node, LocalVariableElement variable,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalLocalVariablePostfix(Send node, LocalVariableElement variable,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalLocalVariablePrefix(Send node, LocalVariableElement variable,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalLocalVariableSet(
+      SendSet node, LocalVariableElement variable, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitFinalParameterCompound(Send node, ParameterElement parameter,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalParameterPostfix(
+      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalParameterPrefix(
+      Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
+    handleLocal();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalParameterSet(
+      SendSet node, ParameterElement parameter, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitFinalStaticFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalStaticFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalStaticFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalStaticFieldSet(
+      SendSet node, FieldElement field, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitFinalSuperFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalSuperFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalSuperFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalSuperFieldSet(
+      SendSet node, FieldElement field, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitFinalTopLevelFieldCompound(Send node, FieldElement field,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalTopLevelFieldPostfix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalTopLevelFieldPrefix(
+      Send node, FieldElement field, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleDynamic();
+    handleNSM();
+  }
+
+  void visitFinalTopLevelFieldSet(
+      SendSet node, FieldElement field, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitLocalFunctionIncompatibleInvoke(Send node,
+      LocalFunctionElement function, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitLocalFunctionCompound(Send node, LocalFunctionElement function,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleLocal();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitLocalFunctionPostfix(Send node, LocalFunctionElement function,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitLocalFunctionPrefix(Send node, LocalFunctionElement function,
+      IncDecOperator operator, T arg) {
+    handleLocal();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitLocalFunctionSet(
+      SendSet node, LocalFunctionElement function, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitStaticFunctionIncompatibleInvoke(Send node, MethodElement function,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitStaticFunctionSet(
+      Send node, MethodElement function, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitStaticMethodCompound(Send node, MethodElement method,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitStaticMethodPostfix(
+      Send node, MethodElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitStaticMethodPrefix(
+      Send node, MethodElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitStaticMethodSetterCompound(Send node, MethodElement method,
+      MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitStaticMethodSetterPostfix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitStaticMethodSetterPrefix(Send node, FunctionElement getter,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitStaticSetterGet(Send node, FunctionElement setter, T arg) {
+    handleNSM();
+  }
+
+  void visitStaticSetterInvoke(Send node, FunctionElement setter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitSuperMethodCompound(Send node, FunctionElement method,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleMonomorphic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitSuperMethodIncompatibleInvoke(Send node, MethodElement method,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitSuperMethodPostfix(
+      Send node, FunctionElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitSuperMethodPrefix(
+      Send node, FunctionElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitSuperMethodSet(Send node, MethodElement method, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitSuperSetterGet(Send node, FunctionElement setter, T arg) {
+    handleNSM();
+  }
+
+  void visitSuperSetterInvoke(Send node, FunctionElement setter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitTopLevelFunctionIncompatibleInvoke(Send node,
+      MethodElement function, NodeList arguments, CallStructure callStructure,
+      T arg) {
+    handleNSM();
+  }
+
+  void visitTopLevelFunctionSet(
+      Send node, MethodElement function, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitTopLevelGetterSet(
+      SendSet node, FunctionElement getter, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitTopLevelMethodCompound(Send node, FunctionElement method,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitTopLevelMethodPostfix(
+      Send node, MethodElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTopLevelMethodPrefix(
+      Send node, MethodElement method, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTopLevelMethodSetterCompound(Send node, FunctionElement method,
+      FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitTopLevelMethodSetterPostfix(Send node, FunctionElement method,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTopLevelMethodSetterPrefix(Send node, FunctionElement method,
+      FunctionElement setter, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTopLevelSetterGet(Send node, FunctionElement setter, T arg) {
+    handleNSM();
+  }
+
+  void visitTopLevelSetterInvoke(Send node, FunctionElement setter,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitTypeVariableTypeLiteralCompound(Send node,
+      TypeVariableElement element, AssignmentOperator operator, Node rhs,
+      T arg) {
+    handleMonomorphic();
+    handleNSM();    // operator on a method closure yields nSM
+    handleNoSend(); // setter is not invoked, don't count it.
+  }
+
+  void visitTypeVariableTypeLiteralGet(
+      Send node, TypeVariableElement element, T arg) {
+    handleMonomorphic();
+  }
+
+  void visitTypeVariableTypeLiteralInvoke(Send node,
+      TypeVariableElement element, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitTypeVariableTypeLiteralPostfix(
+      Send node, TypeVariableElement element, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTypeVariableTypeLiteralPrefix(
+      Send node, TypeVariableElement element, IncDecOperator operator, T arg) {
+    handleMonomorphic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTypeVariableTypeLiteralSet(
+      SendSet node, TypeVariableElement element, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitTypedefTypeLiteralCompound(Send node, ConstantExpression constant,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTypedefTypeLiteralGet(
+      Send node, ConstantExpression constant, T arg) {
+    handleStatic();
+  }
+
+  void visitTypedefTypeLiteralInvoke(Send node, ConstantExpression constant,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitTypedefTypeLiteralPostfix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTypedefTypeLiteralPrefix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitTypedefTypeLiteralSet(
+      SendSet node, ConstantExpression constant, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedClassConstructorInvoke(NewExpression node,
+      Element element, DartType type, NodeList arguments, Selector selector,
+      T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedCompound(Send node, Element element,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedConstructorInvoke(NewExpression node, Element constructor,
+      DartType type, NodeList arguments, Selector selector, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedGet(Send node, Element element, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedInvoke(Send node, Element element, NodeList arguments,
+      Selector selector, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedPostfix(
+      Send node, Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedPrefix(
+      Send node, Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedRedirectingFactoryConstructorInvoke(NewExpression node,
+      ConstructorElement constructor, InterfaceType type, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSet(Send node, Element element, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedStaticGetterCompound(Send node, Element element,
+      MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedStaticGetterPostfix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedStaticGetterPrefix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedStaticSetterCompound(Send node, MethodElement getter,
+      Element element, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedStaticSetterPostfix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedStaticSetterPrefix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperBinary(Send node, Element element,
+      BinaryOperator operator, Node argument, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSuperCompound(Send node, Element element,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperCompoundIndexSet(Send node, Element element,
+      Node index, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGet(Send node, Element element, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSuperGetterCompound(Send node, Element element,
+      MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGetterCompoundIndexSet(Send node, Element element,
+      MethodElement setter, Node index, AssignmentOperator operator, Node rhs,
+      T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGetterIndexPostfix(Send node, Element element,
+      MethodElement setter, Node index, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGetterIndexPrefix(Send node, Element element,
+      MethodElement setter, Node index, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGetterPostfix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperGetterPrefix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperIndex(
+      Send node, Element element, Node index, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSuperIndexPostfix(
+      Send node, Element element, Node index, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperIndexPrefix(
+      Send node, Element element, Node index, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperIndexSet(
+      Send node, Element element, Node index, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSuperInvoke(Send node, Element element,
+      NodeList arguments, Selector selector, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedSuperPostfix(
+      Send node, Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperPrefix(
+      Send node, Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterCompound(Send node, MethodElement getter,
+      Element element, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterCompoundIndexSet(Send node,
+      MethodElement getter, Element element, Node index,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterIndexPostfix(Send node,
+      MethodElement indexFunction, Element element, Node index,
+      IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterIndexPrefix(Send node,
+      MethodElement indexFunction, Element element, Node index,
+      IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterPostfix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperSetterPrefix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedSuperUnary(
+      Send node, UnaryOperator operator, Element element, T arg) {
+    handleNSM();
+  }
+
+  void visitUnresolvedTopLevelGetterCompound(Send node, Element element,
+      MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedTopLevelGetterPostfix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedTopLevelGetterPrefix(Send node, Element element,
+      MethodElement setter, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedTopLevelSetterCompound(Send node, MethodElement getter,
+      Element element, AssignmentOperator operator, Node rhs, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedTopLevelSetterPostfix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  void visitUnresolvedTopLevelSetterPrefix(Send node, MethodElement getter,
+      Element element, IncDecOperator operator, T arg) {
+    handleNSM();
+    handleNoSend();
+    handleNoSend();
+  }
+
+  // Static
+
+  void visitConstantGet(Send node, ConstantExpression constant, T arg) {
+    handleStatic();
+  }
+
+  void visitConstantInvoke(Send node, ConstantExpression constant,
+      NodeList arguments, CallStructure callStreucture, T arg) {
+    handleStatic();
+  }
+
+  void visitFactoryConstructorInvoke(NewExpression node,
+      ConstructorElement constructor, InterfaceType type, NodeList arguments,
+      CallStructure callStructure, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticFieldGet(Send node, FieldElement field, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticFieldSet(SendSet node, FieldElement field, Node rhs, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticFunctionGet(Send node, MethodElement function, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticFunctionInvoke(Send node, MethodElement function,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticGetterGet(Send node, FunctionElement getter, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticGetterSet(
+      SendSet node, FunctionElement getter, Node rhs, T arg) {
+    handleStatic();
+  }
+
+  void visitStaticSetterSet(
+      SendSet node, FunctionElement setter, Node rhs, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelFieldGet(Send node, FieldElement field, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelFieldSet(
+      SendSet node, FieldElement field, Node rhs, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelFunctionGet(Send node, MethodElement function, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelFunctionInvoke(Send node, MethodElement function,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelGetterGet(Send node, FunctionElement getter, T arg) {
+    handleStatic();
+  }
+
+  void visitTopLevelSetterSet(
+      SendSet node, FunctionElement setter, Node rhs, T arg) {
+    handleStatic();
+  }
+
+  // Virtual
+
+  void visitSuperCompoundIndexSet(SendSet node, MethodElement getter,
+      MethodElement setter, Node index, AssignmentOperator operator, Node rhs,
+      T arg) {
+    handleMonomorphic();
+    handleVirtual();
+    handleMonomorphic();
+  }
+
+  void visitThisGet(Identifier node, T arg) {
+    handleVirtual();
+  }
+
+  void visitThisInvoke(
+      Send node, NodeList arguments, CallStructure callStructure, T arg) {
+    handleVirtual();
+  }
+
+  void visitThisPropertyGet(Send node, Selector selector, T arg) {
+    handleVirtual();
+  }
+
+  void visitThisPropertySet(SendSet node, Selector selector, Node rhs, T arg) {
+    handleVirtual();
+  }
+
+  // Not count
+
+  void errorInvalidAssert(Send node, NodeList arguments, T arg) {
+    handleNoSend();
+  }
+
+  void errorNonConstantConstructorInvoke(NewExpression node, Element element,
+      DartType type, NodeList arguments, CallStructure callStructure, T arg) {
+    handleNoSend();
+  }
+
+  void errorUndefinedBinaryExpression(
+      Send node, Node left, Operator operator, Node right, T arg) {
+    handleNoSend();
+  }
+
+  void errorUndefinedUnaryExpression(
+      Send node, Operator operator, Node expression, T arg) {
+    handleNoSend();
+  }
+
+  void visitAs(Send node, Node expression, DartType type, T arg) {
+    handleNoSend();
+  }
+
+  void visitAssert(Send node, Node expression, T arg) {
+    handleNoSend();
+  }
+
+  void visitClassTypeLiteralCompound(Send node, ConstantExpression constant,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitClassTypeLiteralGet(Send node, ConstantExpression constant, T arg) {
+    handleStatic();
+  }
+
+  void visitClassTypeLiteralInvoke(Send node, ConstantExpression constant,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitClassTypeLiteralPostfix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitClassTypeLiteralPrefix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitClassTypeLiteralSet(
+      SendSet node, ConstantExpression constant, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitDynamicTypeLiteralCompound(Send node, ConstantExpression constant,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitDynamicTypeLiteralGet(
+      Send node, ConstantExpression constant, T arg) {
+    handleNSM();
+  }
+
+  void visitDynamicTypeLiteralInvoke(Send node, ConstantExpression constant,
+      NodeList arguments, CallStructure callStructure, T arg) {
+    handleNSM();
+  }
+
+  void visitDynamicTypeLiteralPostfix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitDynamicTypeLiteralPrefix(
+      Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
+    handleStatic();
+    handleNSM();
+    handleNoSend();
+  }
+
+  void visitDynamicTypeLiteralSet(
+      SendSet node, ConstantExpression constant, Node rhs, T arg) {
+    handleNSM();
+  }
+
+  void visitIfNull(Send node, Node left, Node right, T arg) {
+    handleNoSend();
+  }
+
+  void visitIs(Send node, Node expression, DartType type, T arg) {
+    handleNoSend();
+  }
+
+  void visitIsNot(Send node, Node expression, DartType type, T arg) {
+    handleNoSend();
+  }
+
+  void visitLogicalAnd(Send node, Node left, Node right, T arg) {
+    handleNoSend();
+  }
+
+  void visitLogicalOr(Send node, Node left, Node right, T arg) {
+    handleNoSend();
+  }
+
+  void visitNot(Send node, Node expression, T arg) {
+    handleNoSend();
+  }
+
+  String last;
+  _check(Send node, String msg) {
+    var sb = new StringBuffer();
+    sb.write('$msg');
+    sb.write(measurements[Metric.send]);
+    sb.write(' (sends) | ');
+    bool first = true;
+    for (var specificSend in Metric.send.submetrics) {
+      if (first) {
+        first = false;
+      } else {
+        sb.write(' + ');
+      }
+      sb.write(measurements[specificSend]);
+      sb.write(' (${specificSend.name})');
+    }
+    if (!measurements.checkInvariant(Metric.send)) {
+      compiler.reportError(
+          node, MessageKind.GENERIC, {'text': 'bad $sb\nlast: $last'});
+      last = '$sb';
+      exit(1);
+    } else {
+      //compiler.reportInfo(node, MessageKind.GENERIC, {'text': 'good $msg $sb'});
+      last = '$sb';
+    }
+  }
+}
+
+/// Visitor that collects statistics about our understanding of a function.
+class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
+    implements SemanticSendVisitor {
+  final Compiler compiler;
+  final _StatsVisitor statsVisitor;
+  Measurements get measurements => statsVisitor.measurements;
+  _StatsTraversalVisitor(Compiler compiler, TreeElements elements)
+      : compiler = compiler,
+        statsVisitor = new _StatsVisitor(compiler, elements),
+        super(elements);
+
+  void visitSend(Send node) {
+    try {
+      node.accept(statsVisitor);
+    } catch (e) {
+      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e'});
+    }
+    super.visitSend(node);
+  }
 }
 
 /// Helper to visit elements recursively
@@ -1620,34 +1734,28 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
   @override
   R visitLibraryElement(LibraryElement e, A arg) {
     List<R> results = [];
-    e.implementation.compilationUnits.forEach(
-        (u) => results.add(u.accept(this, arg)));
+    e.implementation.compilationUnits
+        .forEach((u) => results.add(u.accept(this, arg)));
     return merge(results);
   }
 
   @override
-  R visitVariableElement(VariableElement e, A arg) {
-  }
+  R visitVariableElement(VariableElement e, A arg) {}
 
   @override
-  R visitParameterElement(ParameterElement e, A arg) {
-  }
+  R visitParameterElement(ParameterElement e, A arg) {}
 
   @override
-  R visitFormalElement(FormalElement e, A arg) {
-  }
+  R visitFormalElement(FormalElement e, A arg) {}
 
   @override
-  R visitFieldElement(FieldElement e, A arg) {
-  }
+  R visitFieldElement(FieldElement e, A arg) {}
 
   @override
-  R visitFieldParameterElement(InitializingFormalElement e, A arg) {
-  }
+  R visitFieldParameterElement(InitializingFormalElement e, A arg) {}
 
   @override
-  R visitAbstractFieldElement(AbstractFieldElement e, A arg) {
-  }
+  R visitAbstractFieldElement(AbstractFieldElement e, A arg) {}
 
   @override
   R visitFunctionElement(FunctionElement e, A arg) {
@@ -1675,8 +1783,7 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
   }
 
   @override
-  R visitBoxFieldElement(BoxFieldElement e, A arg) {
-  }
+  R visitBoxFieldElement(BoxFieldElement e, A arg) {}
 
   @override
   R visitClosureClassElement(ClosureClassElement e, A arg) {
@@ -1687,4 +1794,11 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
   R visitClosureFieldElement(ClosureFieldElement e, A arg) {
     return visitVariableElement(e, arg);
   }
+}
+
+Set<String> _messages = new Set<String>();
+_debug(String message) {
+  //if (_messages.add(message)) {
+  print('[33mdebug:[0m $message');
+  //}
 }
