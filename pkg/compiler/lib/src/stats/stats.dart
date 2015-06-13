@@ -127,67 +127,69 @@ class Metric {
   ]);
   static const Metric reachableFunctions = const Metric('reachable functions');
 
-  /// Total sends, and classification of sends
+  /// Total sends, and classification of sends:
+  ///
+  ///     sends
+  ///       |- monomorphic
+  ///       |  |- static (top-levels, statics)
+  ///       |  |- super
+  ///       |  |- local (access to a local var, call local function)
+  ///       |  |- constructor (like factory ctros)
+  ///       |  |- type variable (reading a type variable)
+  ///       |  |- nsm (known no such method exception)
+  ///       |  |- single-nsm-call (known no such method call, single target)
+  ///       |  |- instance (non-interceptor, only one possible target)
+  ///       |  '- interceptor (interceptor, known)
+  ///       |
+  ///       '- polymorphic
+  ///          |- multi-nsm (known to be nSM, but not sure if error, or call, or
+  ///                        which call)
+  ///          |- virtual (traditional virtual call, polymorphic equivalent of
+  ///          |           `instance`, no-interceptor)
+  ///          |- multi-interceptor (1 of n possible interceptors)
+  ///          '- dynamic (any combination of the above)
+  ///
   static const Metric send = const GroupedMetric('send', const [
-      dynamicSend,
-      virtualSend,
-      staticSend,
-      localSend,
-      nsmSend,
-      constructorSend,
       monomorphicSend,
+      polymorphicSend,
   ]);
 
-  static const Metric dynamicSend = const Metric('dynamic');
-  static const Metric virtualSend = const Metric('virtual');
+  static const Metric monomorphicSend = const GroupedMetric('monomorphic',
+      const [
+        staticSend,
+        superSend,
+        localSend,
+        constructorSend,
+        typeVariableSend,
+        nsmErrorSend,
+        singleNsmCallSend,
+        instanceSend,
+        interceptorSend,
+      ]);
+
   static const Metric staticSend = const Metric('static');
-  // doesn't really count, we might normalize results to remove these at the end
-  // includes reading a local variable, reading a parameter, reading a local
-  // function.
+  static const Metric superSend = const Metric('super');
   static const Metric localSend = const Metric('local');
   static const Metric constructorSend = const Metric('constructor');
-  static const Metric monomorphicSend = const Metric('monomorphic');
+  static const Metric typeVariableSend = const Metric('type variable');
+  static const Metric nsmErrorSend = const Metric('nSM error');
+  static const Metric singleNsmCallSend = const Metric('nSM call single');
+  static const Metric instanceSend = const Metric('instance');
+  static const Metric interceptorSend = const Metric('interceptor');
 
-  // no such method sends
-  static const Metric nsmSend = const Metric('nSM');
+  static const Metric polymorphicSend = const GroupedMetric('polymorphic',
+      const [
+        multiNsmCallSend,
+        virtualSend,
+        multiInterceptorSend,
+        dynamicSend,
+      ]);
 
-  // static const Metric dynamicSend = const GroupedMetric('dynamic', const [
-  //     dynamicGet,
-  //     dynamicSet,
-  //     dynamicInvoke,
-  // ]);
+  static const Metric multiNsmCallSend = const Metric('nSM call multi');
+  static const Metric virtualSend = const Metric('virtual');
+  static const Metric multiInterceptorSend = const Metric('interceptor multi');
+  static const Metric dynamicSend = const Metric('dynamic');
 
-  // static const Metric virtualSend = const GroupedMetric('virtual', const [
-  //     virtualGet,
-  //     virtualSet,
-  //     virtualInvoke,
-  // ]);
-
-  // static const Metric staticSend = const GroupedMetric('static', const [
-  //     staticGet,
-  //     staticSet,
-  //     staticInvoke,
-  // ]);
-
-
-  // static const Metric monomorphicSend = const GroupedMetric('monomorphic', const [
-  //     monomorphicGet,
-  //     monomorphicSet,
-  //     monomorphicInvoke,
-  // ]);
-
-  //static const dynamicGet = const Metric('dynamic get');
-  //static const dynamicSet = const Metric('dynamic set');
-  //static const dynamicInvoke = const Metric('dynamic invoke');
-  //static const virtualGet = const Metric('virtual get');
-  //static const virtualSet = const Metric('virtual set');
-  //static const virtualInvoke = const Metric('virtual invoke');
-  //static const staticGet = const Metric('static get');
-  //static const staticSet = const Metric('static set');
-  //static const staticInvoke = const Metric('static invoke');
-  //static const monomorphicGet = const Metric('monomorphic get');
-  //static const monomorphicSet = const Metric('monomorphic set');
-  //static const monomorphicInvoke = const Metric('monomorphic invoke');
 }
 
 /// A metric that is subdivided in smaller metrics.

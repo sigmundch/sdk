@@ -92,7 +92,7 @@ class StatsBuilder extends RecursiveElementVisitor {
 }
 
 class _StatsVisitor<T> extends Visitor<T>
-    with SendResolverMixin, SemanticSendResolvedMixin, BaseImplementationOfStaticsMixin<Void, T>, BaseImplementationOfLocalsMixin<Void, T>, BaseImplementationOfDynamicsMixin<Void, T>, BaseImplementationOfCompoundsMixin<Void, T>, BaseImplementationOfIndexCompoundsMixin<Void, T> {
+    with SendResolverMixin, SemanticSendResolvedMixin {
   SemanticSendVisitor<Void, T> get sendVisitor => this;
   Measurements measurements = new Measurements.reachableFunction();
   final Compiler compiler;
@@ -102,9 +102,11 @@ class _StatsVisitor<T> extends Visitor<T>
   visitSend(Send node) {
     _check(node, 'before');
     measurements[Metric.send]++;
-    if (node is SendSet && 
-        ((node.assignmentOperator != null && node.assignmentOperator.source != '=')
-        || node.isPrefix || node.isPostfix)) {
+    if (node is SendSet &&
+        ((node.assignmentOperator != null &&
+                node.assignmentOperator.source != '=') ||
+            node.isPrefix ||
+            node.isPostfix)) {
       print('=> ${node.assignmentOperator.runtimeType}');
       measurements[Metric.send] += 2;
     }
@@ -112,20 +114,59 @@ class _StatsVisitor<T> extends Visitor<T>
     _check(node, 'after');
   }
 
-  handleLocal() => measurements[Metric.localSend]++;
-  handleDynamic() => measurements[Metric.dynamicSend]++;
-  handleCompoundDynamic() {
-    // Count 2 more for the get and set portions of the compound
-    measurements[Metric.send] += 2;
-
-    // TODO(sigmund): refine, the other two are likely better.
-    measurements[Metric.dynamicSend] += 3;
+  handleLocal() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.localSend]++;
   }
-  handleVirtual() => measurements[Metric.virtualSend]++;
-  handleNSM() => measurements[Metric.nsmSend]++;
-  handleMonomorphic() => measurements[Metric.monomorphicSend]++;
-  handleStatic() => measurements[Metric.staticSend]++;
-  handleNoSend() => measurements[Metric.send]--;
+  handleConstructor() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.constructorSend]++;
+  }
+  handleDynamic() {
+    measurements[Metric.polymorphicSend]++;
+    measurements[Metric.dynamicSend]++;
+  }
+  handleVirtual() {
+    measurements[Metric.polymorphicSend]++;
+    measurements[Metric.virtualSend]++;
+  }
+  handleNSMError() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.nsmErrorSend]++;
+  }
+  handleNSMSingle() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.singleNsmCallSend]++;
+  }
+
+  handleNSMSuper(Element targetType) {
+    print('\n||||-> ${targetType.runtimeType}');
+    //if (type.containsNSM(...)) {
+    //  handleNSMSingle();
+    //} else {
+    handleNSMError();
+    //}
+  }
+  handleNSMAny() {
+    measurements[Metric.polymorphicSend]++;
+    measurements[Metric.multiNsmCallSend]++;
+  }
+  handleSuper() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.superSend]++;
+  }
+  handleTypeVariable() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.typeVariableSend]++;
+  }
+  handleStatic() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.staticSend]++;
+  }
+
+  handleNoSend() {
+    measurements[Metric.send]--;
+  }
 
   // Constructors
 
@@ -407,30 +448,30 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitSuperFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldFieldCompound(Send node, FieldElement readField,
       FieldElement writtenField, AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldFieldPostfix(Send node, FieldElement readField,
       FieldElement writtenField, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldFieldPrefix(Send node, FieldElement readField,
       FieldElement writtenField, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldInvoke(Send node, FieldElement field, NodeList arguments,
@@ -440,58 +481,58 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitSuperFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldSetterCompound(Send node, FieldElement field,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldSetterPostfix(Send node, FieldElement field,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldSetterPrefix(Send node, FieldElement field,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterFieldCompound(Send node, FunctionElement getter,
       FieldElement field, AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterFieldPostfix(Send node, FunctionElement getter,
       FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterFieldPrefix(Send node, FunctionElement getter,
       FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterInvoke(Send node, FunctionElement getter,
@@ -501,67 +542,67 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitSuperGetterSetterCompound(Send node, FunctionElement getter,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterSetterPostfix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterSetterPrefix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperIndexPostfix(Send node, MethodElement indexFunction,
       MethodElement indexSetFunction, Node index, IncDecOperator operator,
       T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperIndexPrefix(Send node, MethodElement indexFunction,
       MethodElement indexSetFunction, Node index, IncDecOperator operator,
       T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperMethodSetterCompound(Send node, FunctionElement method,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
-    handleNSM();
-    handleMonomorphic();
+    handleSuper();
+    handleNSMSuper(method.owner);
+    handleSuper();
   }
 
   void visitSuperMethodSetterPostfix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
-    handleNSM();
-    handleMonomorphic();
+    handleSuper();
+    handleNSMSuper(method.owner);
+    handleSuper();
   }
 
   void visitSuperMethodSetterPrefix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
-    handleMonomorphic();
-    handleNSM();
-    handleMonomorphic();
+    handleSuper();
+    handleNSMSuper(method.owner);
+    handleSuper();
   }
 
   void visitThisPropertyCompound(Send node, AssignmentOperator operator,
       Node rhs, Selector getterSelector, Selector setterSelector, T arg) {
-    handleVirtual();
     handleDynamic();
-    handleVirtual();
+    handleDynamic();
+    handleDynamic();
   }
 
   void visitThisPropertyInvoke(
@@ -571,16 +612,16 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitThisPropertyPostfix(Send node, IncDecOperator operator,
       Selector getterSelector, Selector setterSelector, T arg) {
-    handleVirtual();
     handleDynamic();
-    handleVirtual();
+    handleDynamic();
+    handleDynamic();
   }
 
   void visitThisPropertyPrefix(Send node, IncDecOperator operator,
       Selector getterSelector, Selector setterSelector, T arg) {
-    handleVirtual();
     handleDynamic();
-    handleVirtual();
+    handleDynamic();
+    handleDynamic();
   }
 
   void visitTopLevelFieldCompound(Send node, FieldElement field,
@@ -672,62 +713,62 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitSuperBinary(Send node, FunctionElement function,
       BinaryOperator operator, Node argument, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperEquals(
       Send node, FunctionElement function, Node argument, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldGet(Send node, FieldElement field, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperFieldSet(SendSet node, FieldElement field, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterGet(Send node, FunctionElement getter, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperGetterSet(
       SendSet node, FunctionElement getter, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperIndex(Send node, FunctionElement function, Node index, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperIndexSet(
       SendSet node, FunctionElement function, Node index, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperMethodGet(Send node, MethodElement method, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperMethodInvoke(Send node, MethodElement method,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperNotEquals(
       Send node, FunctionElement function, Node argument, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperSetterSet(
       SendSet node, FunctionElement setter, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
   void visitSuperUnary(
       Send node, UnaryOperator operator, FunctionElement function, T arg) {
-    handleMonomorphic();
+    handleSuper();
   }
 
 // Statically known "no such method" sends
@@ -735,449 +776,450 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitConstructorIncompatibleInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalLocalVariableCompound(Send node, LocalVariableElement variable,
       AssignmentOperator operator, Node rhs, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalLocalVariablePostfix(Send node, LocalVariableElement variable,
       IncDecOperator operator, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalLocalVariablePrefix(Send node, LocalVariableElement variable,
       IncDecOperator operator, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalLocalVariableSet(
       SendSet node, LocalVariableElement variable, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalParameterCompound(Send node, ParameterElement parameter,
       AssignmentOperator operator, Node rhs, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalParameterPostfix(
       Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalParameterPrefix(
       Send node, ParameterElement parameter, IncDecOperator operator, T arg) {
     handleLocal();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalParameterSet(
       SendSet node, ParameterElement parameter, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalStaticFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalStaticFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalStaticFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalStaticFieldSet(
       SendSet node, FieldElement field, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalSuperFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleNSM();
+    handleNSMSuper(field.owner);
   }
 
   void visitFinalSuperFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleNSM();
+    handleNSMSuper(field.owner);
   }
 
   void visitFinalSuperFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
-    handleMonomorphic();
+    handleSuper();
     handleDynamic();
-    handleNSM();
+    handleNSMSuper(field.owner);
   }
 
   void visitFinalSuperFieldSet(
       SendSet node, FieldElement field, Node rhs, T arg) {
-    handleNSM();
+    handleNSMSuper(field.owner);
   }
 
   void visitFinalTopLevelFieldCompound(Send node, FieldElement field,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalTopLevelFieldPostfix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalTopLevelFieldPrefix(
       Send node, FieldElement field, IncDecOperator operator, T arg) {
     handleStatic();
     handleDynamic();
-    handleNSM();
+    handleNSMError();
   }
 
   void visitFinalTopLevelFieldSet(
       SendSet node, FieldElement field, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitLocalFunctionIncompatibleInvoke(Send node,
       LocalFunctionElement function, NodeList arguments,
       CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitLocalFunctionCompound(Send node, LocalFunctionElement function,
       AssignmentOperator operator, Node rhs, T arg) {
     handleLocal();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitLocalFunctionPostfix(Send node, LocalFunctionElement function,
       IncDecOperator operator, T arg) {
     handleLocal();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitLocalFunctionPrefix(Send node, LocalFunctionElement function,
       IncDecOperator operator, T arg) {
     handleLocal();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitLocalFunctionSet(
       SendSet node, LocalFunctionElement function, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitStaticFunctionIncompatibleInvoke(Send node, MethodElement function,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitStaticFunctionSet(
       Send node, MethodElement function, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitStaticMethodCompound(Send node, MethodElement method,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleNSMError(); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitStaticMethodPostfix(
       Send node, MethodElement method, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitStaticMethodPrefix(
       Send node, MethodElement method, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitStaticMethodSetterCompound(Send node, MethodElement method,
       MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleNSMError(); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitStaticMethodSetterPostfix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitStaticMethodSetterPrefix(Send node, FunctionElement getter,
       FunctionElement setter, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitStaticSetterGet(Send node, FunctionElement setter, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitStaticSetterInvoke(Send node, FunctionElement setter,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitSuperMethodCompound(Send node, FunctionElement method,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleMonomorphic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleSuper();
+    handleNSMSuper(method.owner); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitSuperMethodIncompatibleInvoke(Send node, MethodElement method,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMSuper(method.owner);
   }
 
   void visitSuperMethodPostfix(
       Send node, FunctionElement method, IncDecOperator operator, T arg) {
-    handleStatic();
-    handleNSM();
+    handleSuper();
+    handleNSMSuper(method.owner);
     handleNoSend();
   }
 
   void visitSuperMethodPrefix(
       Send node, FunctionElement method, IncDecOperator operator, T arg) {
-    handleStatic();
-    handleNSM();
+    handleSuper();
+    handleNSMSuper(method.owner);
     handleNoSend();
   }
 
   void visitSuperMethodSet(Send node, MethodElement method, Node rhs, T arg) {
-    handleNSM();
+    handleNSMSuper(method.owner);
   }
 
   void visitSuperSetterGet(Send node, FunctionElement setter, T arg) {
-    handleNSM();
+    handleNSMSuper(method.owner);
   }
 
   void visitSuperSetterInvoke(Send node, FunctionElement setter,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMSuper(method.owner);
   }
 
   void visitTopLevelFunctionIncompatibleInvoke(Send node,
       MethodElement function, NodeList arguments, CallStructure callStructure,
       T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTopLevelFunctionSet(
       Send node, MethodElement function, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTopLevelGetterSet(
       SendSet node, FunctionElement getter, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTopLevelMethodCompound(Send node, FunctionElement method,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleNSMError(); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitTopLevelMethodPostfix(
       Send node, MethodElement method, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTopLevelMethodPrefix(
       Send node, MethodElement method, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTopLevelMethodSetterCompound(Send node, FunctionElement method,
       FunctionElement setter, AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleNSMError(); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitTopLevelMethodSetterPostfix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTopLevelMethodSetterPrefix(Send node, FunctionElement method,
       FunctionElement setter, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTopLevelSetterGet(Send node, FunctionElement setter, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTopLevelSetterInvoke(Send node, FunctionElement setter,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTypeVariableTypeLiteralCompound(Send node,
       TypeVariableElement element, AssignmentOperator operator, Node rhs,
       T arg) {
-    handleMonomorphic();
-    handleNSM();    // operator on a method closure yields nSM
+    handleTypeVariable();
+    handleNSMError(); // operator on a method closure yields nSM
     handleNoSend(); // setter is not invoked, don't count it.
   }
 
   void visitTypeVariableTypeLiteralGet(
       Send node, TypeVariableElement element, T arg) {
-    handleMonomorphic();
+    handleTypeVariable();
   }
 
   void visitTypeVariableTypeLiteralInvoke(Send node,
       TypeVariableElement element, NodeList arguments,
       CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTypeVariableTypeLiteralPostfix(
       Send node, TypeVariableElement element, IncDecOperator operator, T arg) {
-    handleMonomorphic();
-    handleNSM();
+    handleTypeVariable();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTypeVariableTypeLiteralPrefix(
       Send node, TypeVariableElement element, IncDecOperator operator, T arg) {
-    handleMonomorphic();
-    handleNSM();
+    handleTypeVariable();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTypeVariableTypeLiteralSet(
       SendSet node, TypeVariableElement element, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTypedefTypeLiteralCompound(Send node, ConstantExpression constant,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleStatic();
-    handleNSM();
+    handleTypeVariable();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTypedefTypeLiteralGet(
       Send node, ConstantExpression constant, T arg) {
-    handleStatic();
+    handleTypeVariable();
   }
 
   void visitTypedefTypeLiteralInvoke(Send node, ConstantExpression constant,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitTypedefTypeLiteralPostfix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
-    handleStatic();
-    handleNSM();
+    handleTypeVariable();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTypedefTypeLiteralPrefix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
-    handleStatic();
-    handleNSM();
+    handleTypeVariable();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitTypedefTypeLiteralSet(
       SendSet node, ConstantExpression constant, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedClassConstructorInvoke(NewExpression node,
       Element element, DartType type, NodeList arguments, Selector selector,
       T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedCompound(Send node, Element element,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedConstructorInvoke(NewExpression node, Element constructor,
       DartType type, NodeList arguments, Selector selector, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedGet(Send node, Element element, T arg) {
-    handleNSM();
+    print('-> $node ==> $element');
+    handleNSMError();
   }
 
   void visitUnresolvedInvoke(Send node, Element element, NodeList arguments,
       Selector selector, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedPostfix(
       Send node, Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedPrefix(
       Send node, Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1185,81 +1227,81 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitUnresolvedRedirectingFactoryConstructorInvoke(NewExpression node,
       ConstructorElement constructor, InterfaceType type, NodeList arguments,
       CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSet(Send node, Element element, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedStaticGetterCompound(Send node, Element element,
       MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedStaticGetterPostfix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedStaticGetterPrefix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedStaticSetterCompound(Send node, MethodElement getter,
       Element element, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedStaticSetterPostfix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedStaticSetterPrefix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperBinary(Send node, Element element,
       BinaryOperator operator, Node argument, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSuperCompound(Send node, Element element,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperCompoundIndexSet(Send node, Element element,
       Node index, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperGet(Send node, Element element, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSuperGetterCompound(Send node, Element element,
       MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1267,85 +1309,85 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitUnresolvedSuperGetterCompoundIndexSet(Send node, Element element,
       MethodElement setter, Node index, AssignmentOperator operator, Node rhs,
       T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperGetterIndexPostfix(Send node, Element element,
       MethodElement setter, Node index, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperGetterIndexPrefix(Send node, Element element,
       MethodElement setter, Node index, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperGetterPostfix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperGetterPrefix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperIndex(
       Send node, Element element, Node index, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSuperIndexPostfix(
       Send node, Element element, Node index, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperIndexPrefix(
       Send node, Element element, Node index, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperIndexSet(
       Send node, Element element, Node index, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSuperInvoke(Send node, Element element,
       NodeList arguments, Selector selector, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedSuperPostfix(
       Send node, Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperPrefix(
       Send node, Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperSetterCompound(Send node, MethodElement getter,
       Element element, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1353,7 +1395,7 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitUnresolvedSuperSetterCompoundIndexSet(Send node,
       MethodElement getter, Element element, Node index,
       AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1361,7 +1403,7 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitUnresolvedSuperSetterIndexPostfix(Send node,
       MethodElement indexFunction, Element element, Node index,
       IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1369,68 +1411,68 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitUnresolvedSuperSetterIndexPrefix(Send node,
       MethodElement indexFunction, Element element, Node index,
       IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperSetterPostfix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperSetterPrefix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedSuperUnary(
       Send node, UnaryOperator operator, Element element, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitUnresolvedTopLevelGetterCompound(Send node, Element element,
       MethodElement setter, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedTopLevelGetterPostfix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedTopLevelGetterPrefix(Send node, Element element,
       MethodElement setter, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedTopLevelSetterCompound(Send node, MethodElement getter,
       Element element, AssignmentOperator operator, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedTopLevelSetterPostfix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
 
   void visitUnresolvedTopLevelSetterPrefix(Send node, MethodElement getter,
       Element element, IncDecOperator operator, T arg) {
-    handleNSM();
+    handleNSMError();
     handleNoSend();
     handleNoSend();
   }
@@ -1515,26 +1557,32 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitSuperCompoundIndexSet(SendSet node, MethodElement getter,
       MethodElement setter, Node index, AssignmentOperator operator, Node rhs,
       T arg) {
-    handleMonomorphic();
-    handleVirtual();
-    handleMonomorphic();
+    handleSuper();
+    handleDynamic();
+    handleSuper();
   }
 
   void visitThisGet(Identifier node, T arg) {
-    handleVirtual();
+    handleDynamic();
   }
 
   void visitThisInvoke(
       Send node, NodeList arguments, CallStructure callStructure, T arg) {
-    handleVirtual();
+    handleDynamic();
   }
 
   void visitThisPropertyGet(Send node, Selector selector, T arg) {
-    handleVirtual();
+    // TODO(sigmund): this may include NSM, we can:
+    // - call it virtual if we find the definition in the class hierarchy and we
+    //   know that the type contains it for sure (e.g. all types mising it are
+    //   abstract)
+    // - monomorphic-instance => if there is only one
+    // - dynamic (if it could be NSM too).
+    handleDynamic();
   }
 
   void visitThisPropertySet(SendSet node, Selector selector, Node rhs, T arg) {
-    handleVirtual();
+    handleDynamic();
   }
 
   // Not count
@@ -1569,7 +1617,7 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitClassTypeLiteralCompound(Send node, ConstantExpression constant,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
@@ -1579,62 +1627,62 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitClassTypeLiteralInvoke(Send node, ConstantExpression constant,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitClassTypeLiteralPostfix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitClassTypeLiteralPrefix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitClassTypeLiteralSet(
       SendSet node, ConstantExpression constant, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitDynamicTypeLiteralCompound(Send node, ConstantExpression constant,
       AssignmentOperator operator, Node rhs, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitDynamicTypeLiteralGet(
       Send node, ConstantExpression constant, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitDynamicTypeLiteralInvoke(Send node, ConstantExpression constant,
       NodeList arguments, CallStructure callStructure, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitDynamicTypeLiteralPostfix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitDynamicTypeLiteralPrefix(
       Send node, ConstantExpression constant, IncDecOperator operator, T arg) {
     handleStatic();
-    handleNSM();
+    handleNSMError();
     handleNoSend();
   }
 
   void visitDynamicTypeLiteralSet(
       SendSet node, ConstantExpression constant, Node rhs, T arg) {
-    handleNSM();
+    handleNSMError();
   }
 
   void visitIfNull(Send node, Node left, Node right, T arg) {
@@ -1664,20 +1712,26 @@ class _StatsVisitor<T> extends Visitor<T>
   String last;
   _check(Send node, String msg) {
     var sb = new StringBuffer();
-    sb.write('$msg');
-    sb.write(measurements[Metric.send]);
-    sb.write(' (sends) | ');
-    bool first = true;
-    for (var specificSend in Metric.send.submetrics) {
-      if (first) {
-        first = false;
-      } else {
-        sb.write(' + ');
+    sb.write('$msg ');
+    int indent = 0;
+    helper(Metric s) {
+      sb.write('  ' * indent);
+      sb.write('${s.name}: ');
+      sb.write(measurements[s]);
+      if (s is! GroupedMetric) return;
+      bool first = true;
+      sb.write('\n');
+      indent++;
+      for (var sub in s.submetrics) {
+        helper(sub);
+        sb.write('\n');
       }
-      sb.write(measurements[specificSend]);
-      sb.write(' (${specificSend.name})');
+      indent--;
     }
-    if (!measurements.checkInvariant(Metric.send)) {
+    helper(Metric.send);
+    if (!measurements.checkInvariant(Metric.send) ||
+        !measurements.checkInvariant(Metric.monomorphicSend) ||
+        !measurements.checkInvariant(Metric.polymorphicSend)) {
       compiler.reportError(
           node, MessageKind.GENERIC, {'text': 'bad $sb\nlast: $last'});
       last = '$sb';

@@ -30,7 +30,8 @@ String formatAsTable(GlobalResult results) {
 
   appendPercent(count, total) {
     if (count == null) count = 0;
-    table.addEntry((count * 100 / total).toStringAsFixed(2));
+    var percent = count * 100 / total;
+    table.addEntry(percent == 100 ? 100 : percent.toStringAsFixed(2));
   }
 
   table.addEntry('%');
