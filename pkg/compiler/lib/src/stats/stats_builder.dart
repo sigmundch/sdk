@@ -92,7 +92,7 @@ class StatsBuilder extends RecursiveElementVisitor {
 }
 
 class _StatsVisitor<T> extends Visitor<T>
-    with SendResolverMixin, SemanticSendResolvedMixin {
+    with SendResolverMixin<T>, SemanticSendResolvedMixin<T> {
   SemanticSendVisitor<Void, T> get sendVisitor => this;
   Measurements measurements = new Measurements.reachableFunction();
   final Compiler compiler;
@@ -141,7 +141,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
   handleNSMSuper(Element targetType) {
     print('\n||||-> ${targetType.runtimeType}');
-    //if (type.containsNSM(...)) {
+    //if (targetType contains a nSM function) {
     //  handleNSMSingle();
     //} else {
     handleNSMError();
@@ -880,6 +880,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitFinalSuperFieldSet(
       SendSet node, FieldElement field, Node rhs, T arg) {
+    print("// #? here");
     handleNSMSuper(field.owner);
   }
 
@@ -1563,11 +1564,17 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 
   void visitThisGet(Identifier node, T arg) {
-    handleDynamic();
+    handleLocal(); // TODO: should we add a metric for "this"?
   }
 
   void visitThisInvoke(
       Send node, NodeList arguments, CallStructure callStructure, T arg) {
+    // TODO:
+    // - does the type of this define `call`? => virtual
+    // - it doesn't, but it's abstract, all concrete subtypes do => virtual
+    // - it doesn't, but it's abstract, all concrete subtypes do, but there is
+    //   only one => instance
+    // - none of them do => nsm error/call (depending on similar rules)
     handleDynamic();
   }
 
@@ -1745,7 +1752,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
 /// Visitor that collects statistics about our understanding of a function.
 class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
-    implements SemanticSendVisitor {
+    implements SemanticSendVisitor<Void, T> {
   final Compiler compiler;
   final _StatsVisitor statsVisitor;
   Measurements get measurements => statsVisitor.measurements;
