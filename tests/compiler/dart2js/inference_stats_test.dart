@@ -5,17 +5,18 @@
 /// Tests that we compute send metrics correctly in many simple scenarios.
 library stats_test;
 
+import 'dart:async';
 import 'package:expect/expect.dart';
 import 'package:compiler/src/stats/stats.dart';
 import 'compiler_helper.dart';
 
-main() {
-  _check('''
+main() async {
+  await _check('''
     main() {}
     test() { int x = 3; } // nothing counted because test is unreachable.
     ''');
 
-  _check('''
+  await _check('''
     main() => test();
     test() { int x = 3; int y = x; }
     ''',
@@ -24,16 +25,26 @@ main() {
   /// Need work:
   /// - need to add _checkWithTypeOnly, _checkWithInferredType
 
-  _check('''
+  await _check('''
+    class A {
+      get f => 1;
+    }
+    main() => test();
+    test() { new A(); }
+    ''',
+    constructorSend: 1);  // new A()
+
+  await _check('''
     class A {
       get f => 1;
     }
     main() => test();
     test() { new A().f; }
     ''',
-    dynamicSend: 1); // x.f itself - type information not implemented yet.
+    constructorSend: 1, // new A()
+    instanceSend: 1); // _.f itself - type information not implemented yet.
 
-  _check('''
+  await _check('''
     class A {
       get f => 1;
     }
@@ -43,9 +54,10 @@ main() {
     main() => test();
     test() { new B().f; }
     ''',
-    dynamicSend: 1); // x.f itself - type information not implemented yet.
+    constructorSend: 1,
+    instanceSend: 1); // _.f itself - type information not implemented yet.
 
-  _check('''
+  await _check('''
     class A {
       get f => 1;
     }
@@ -55,8 +67,9 @@ main() {
     main() => test();
     test() { A x = new B(); x.f; }
     ''',
-    localSend:1, // x in x.f
-    dynamicSend: 1); // x.f itself - type information not implemented yet.
+    constructorSend: 1, // new B()
+    localSend: 1, // x in x.f
+    virtualSend: 1); // x.f itself - type information not implemented yet.
 }
 
 
@@ -104,15 +117,18 @@ _check(String code, {int staticSend: 0, int superSend: 0, int localSend: 0,
       orElse: () => Expect.fail("Cannot find function named 'test'."));
   var result = function.measurements;
 
-  for (var key in expected.counters.keys) {
+  _compareMetric(Metric key) {
     var expectedValue = expected[key];
     var value = result[key];
-    if (value == expectedValue) continue;
+    if (value == expectedValue) return;
     Expect.equals(expected[key], result[key],
-        "$key didn't match:\n"
-        "expected measurements: ${recursiveDiagnosticString(expected,key)}\n"
-        "actual measurements: ${recursiveDiagnosticString(result, key)}");
+        "count for `$key` didn't match:\n"
+        "expected measurements:\n${recursiveDiagnosticString(expected,key)}\n"
+        "actual measurements:\n${recursiveDiagnosticString(result, key)}");
   }
+
+  _compareMetric(Metric.send);
+  expected.counters.keys.forEach(_compareMetric);
 }
 
 Uri testFileUri = new Uri(scheme: 'source');

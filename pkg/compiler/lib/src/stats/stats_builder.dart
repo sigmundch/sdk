@@ -32,7 +32,7 @@ class StatsBuilderTask extends CompilerTask {
       }
       resultForTesting = visitor.result;
       // TODO(sigmund): comment this out
-      print(formatAsTable(visitor.result));
+      //print(formatAsTable(visitor.result));
     });
   }
 }
@@ -63,10 +63,15 @@ class StatsBuilder extends RecursiveElementVisitor {
     compiler.withCurrentElement(e, () {
       if (e.library.isPlatformLibrary) return;
       if (!e.hasNode) {
-        // TODO: this may be wrong, no node could mean an empty constructor body
-        if (!e.library.isPlatformLibrary) print('>> $e: unreachable');
-        currentLib.functions.add(new FunctionResult(
-            e.name, const Measurements.unreachableFunction()));
+        if (e is PartialElement) {
+          currentLib.functions.add(new FunctionResult(e.name,
+              const Measurements.unreachableFunction()));
+        } else {
+          assert (e is ConstructorElement && e.isSynthesized);
+          // TODO(sigmund): measure synthethic forwarding sends, initializers?
+          currentLib.functions.add(new FunctionResult(e.name,
+                new Measurements.reachableFunction()));
+        }
         return;
       }
       if (!e.hasResolvedAst) {
@@ -81,12 +86,12 @@ class StatsBuilder extends RecursiveElementVisitor {
       }
       var def = resolvedAst.elements.getFunctionDefinition(resolvedAst.node);
       if (def == null) {
-        _debug('def is null? ${e.runtimeType}');
+        assert (e is PartialElement);
+        currentLib.functions.add(new FunctionResult(e.name,
+            const Measurements.unreachableFunction()));
         return;
       }
       resolvedAst.node.accept(visitor);
-      if (!e.library.isPlatformLibrary) print(
-          '>> $e: reachable, add ${visitor.measurements[Metric.functions]}');
       currentLib.functions
           .add(new FunctionResult(e.name, visitor.measurements));
     });
@@ -116,6 +121,13 @@ class _StatsVisitor<T> extends Visitor<T>
       measurements[Metric.send] += 2;
     }
     super.visitSend(node);
+    _check(node, 'after');
+  }
+
+  visitNewExpression(NewExpression node) {
+    _check(node, 'before');
+    measurements[Metric.send]++;
+    super.visitNewExpression(node);
     _check(node, 'after');
   }
 
@@ -244,7 +256,69 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
-    handleDynamic();
+
+    // staticSend: no (automatically)
+    // superSend: no (automatically)
+    // localSend: no (automatically)
+    // constructorSend: no (automatically)
+    // typeVariableSend: no (automatically)
+
+    // nsmErrorSend:      receiver has no `selector` nor nSM.
+    // singleNsmCallSend: receiver has no `selector`, but definitely has `nSM`
+    // instanceSend:      receiver has `selector`, no need to use an interceptor
+    // interceptorSend:   receiver has `selector`, but we know we need an interceptor to get it 
+
+    // multiNsmCallSend:  receiver has no `selector`, not sure if receiver has
+    //                    nSM, or not sure which nSM is called (does this one
+    //                    matter, or does nSM is treated like an instance method
+    //                    call)?
+    // virtualSend:       receiver has `selector`, we know we do not need an
+    //                    interceptor, not sure which specific type implements
+    //                    the selector.
+    // multiInterceptorSend: multiple possible receiver types, all using an
+    //                       interceptor to get the `selector`, might be
+    //                       possbile to pick a special selector logic for this
+    //                       combination?
+    // dynamicSend: any combination of the above.
+
+    boolish hasSelector = info.hasSelector(receiver, selector);
+    boolish hasNsm = info.hasNoSuchMethod(receiver);
+    if (hasSelector == boolish.no && hasNsm == boolish.no) {
+      handleNSMError();
+      return;
+    }
+
+    if (hasSelector == boolish.no && hasNsm == boolish.yes) {
+      if (info.possibleNumberOfNSM(receiver) == 1) {
+        handleNSMSingle();
+      } else {
+        handleNSMAny();
+      }
+      return;
+    }
+
+    int possibleTargets = info.possibleTargets(receiver, selector);
+    boolish usesInterceptor = info.usesInterceptor(receiver, selector);
+    if (hasSelector == boolish.yes) {
+      if (possibleTargets == 1) {
+        assert (usesInterceptor != boolish.maybe);
+        if (usesInterceptor == boolish.yes) {
+          handleSingleInterceptor();
+        } else {
+          handleSingleInstance();
+        }
+        return;
+      } else {
+        if (usesInterceptor == boolish.no) {
+          handleVirtual();
+        } else if (usesInterceptor == boolish.yes) {
+          handleMultiInterceptor();
+        } else {
+          handleDynamic();
+        }
+        return;
+      }
+    }
   }
 
   void visitDynamicPropertyInvoke(
@@ -1722,7 +1796,7 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 
   String last;
-  _check(Send node, String msg) {
+  _check(node, String msg) {
     msg = '$msg ${recursiveDiagnosticString(measurements, Metric.send)}';
     if (!measurements.checkInvariant(Metric.send) ||
         !measurements.checkInvariant(Metric.monomorphicSend) ||
@@ -1756,6 +1830,15 @@ class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
       compiler.reportError(node, MessageKind.GENERIC, {'text': '$e'});
     }
     super.visitSend(node);
+  }
+
+  void visitNewExpression(NewExpression node) {
+    try {
+      node.accept(statsVisitor);
+    } catch (e) {
+      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e'});
+    }
+    super.visitNewExpression(node);
   }
 }
 
