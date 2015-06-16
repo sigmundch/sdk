@@ -189,7 +189,6 @@ class Metric {
   static const Metric virtualSend = const Metric('virtual');
   static const Metric multiInterceptorSend = const Metric('interceptor multi');
   static const Metric dynamicSend = const Metric('dynamic');
-
 }
 
 /// A metric that is subdivided in smaller metrics.
@@ -203,6 +202,7 @@ class Measurements {
   final Map<Metric, int> counters;
 
   Measurements() : counters = <Metric, int>{};
+
   const Measurements.unreachableFunction()
     : counters = const { Metric.functions: 1};
 
@@ -251,4 +251,25 @@ abstract class RecursiveResultVisitor extends ResultVisitor {
   visitLibrary(LibraryResult library) {
     library.functions.forEach(visitFunction);
   }
+}
+
+String recursiveDiagnosticString(Measurements measurements, Metric metric) {
+  var sb = new StringBuffer();
+  int indent = 0;
+  helper(Metric m) {
+    sb.write('  ' * indent);
+    sb.write('${m.name}: ');
+    sb.write(measurements[m]);
+    if (m is! GroupedMetric) return;
+    bool first = true;
+    sb.write('\n');
+    indent++;
+    for (var sub in m.submetrics) {
+      helper(sub);
+      sb.write('\n');
+    }
+    indent--;
+  }
+  helper(metric);
+  return sb.toString();
 }

@@ -20,6 +20,8 @@ import '../scanner/scannerlib.dart' show PartialElement;
 class StatsBuilderTask extends CompilerTask {
   String get name => "Inference Stats";
 
+  GlobalResult resultForTesting;
+
   StatsBuilderTask(Compiler compiler) : super(compiler);
 
   void run() {
@@ -28,6 +30,8 @@ class StatsBuilderTask extends CompilerTask {
       for (var lib in compiler.libraryLoader.libraries) {
         lib.accept(visitor, null);
       }
+      resultForTesting = visitor.result;
+      // TODO(sigmund): comment this out
       print(formatAsTable(visitor.result));
     });
   }
@@ -92,7 +96,8 @@ class StatsBuilder extends RecursiveElementVisitor {
 }
 
 class _StatsVisitor<T> extends Visitor<T>
-    with SendResolverMixin<T>, SemanticSendResolvedMixin<T> {
+    with SendResolverMixin<T>, SemanticSendResolvedMixin<T>
+    implements SemanticSendVisitor<Void, T> {
   SemanticSendVisitor<Void, T> get sendVisitor => this;
   Measurements measurements = new Measurements.reachableFunction();
   final Compiler compiler;
@@ -1718,34 +1723,17 @@ class _StatsVisitor<T> extends Visitor<T>
 
   String last;
   _check(Send node, String msg) {
-    var sb = new StringBuffer();
-    sb.write('$msg ');
-    int indent = 0;
-    helper(Metric s) {
-      sb.write('  ' * indent);
-      sb.write('${s.name}: ');
-      sb.write(measurements[s]);
-      if (s is! GroupedMetric) return;
-      bool first = true;
-      sb.write('\n');
-      indent++;
-      for (var sub in s.submetrics) {
-        helper(sub);
-        sb.write('\n');
-      }
-      indent--;
-    }
-    helper(Metric.send);
+    msg = '$msg ${recursiveDiagnosticString(measurements, Metric.send)}';
     if (!measurements.checkInvariant(Metric.send) ||
         !measurements.checkInvariant(Metric.monomorphicSend) ||
         !measurements.checkInvariant(Metric.polymorphicSend)) {
       compiler.reportError(
-          node, MessageKind.GENERIC, {'text': 'bad $sb\nlast: $last'});
-      last = '$sb';
+          node, MessageKind.GENERIC, {'text': 'bad $msg\nlast: $last'});
+      last = msg;
       exit(1);
     } else {
       //compiler.reportInfo(node, MessageKind.GENERIC, {'text': 'good $msg $sb'});
-      last = '$sb';
+      last = msg;
     }
   }
 }
