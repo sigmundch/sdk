@@ -363,6 +363,8 @@ class World implements ClassWorld {
         compiler.internalError(cls, 'Class "${cls.name}" is not resolved.');
       }
 
+      _subtypes.putIfAbsent(cls, () => new Set<ClassElement>()).add(cls);
+      _subclasses.putIfAbsent(cls, () => new Set<ClassElement>()).add(cls);
       for (DartType type in cls.allSupertypes) {
         Set<Element> subtypesOfSupertype =
             _subtypes.putIfAbsent(type.element, () => new Set<ClassElement>());

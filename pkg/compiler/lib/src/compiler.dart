@@ -1028,7 +1028,7 @@ abstract class Compiler implements DiagnosticListener {
   Compiler({this.enableTypeAssertions: false,
             this.enableUserAssertions: false,
             this.trustTypeAnnotations: false,
-            this.trustUncheckedTypeAnnotations: false,
+            this.trustUncheckedTypeAnnotations: true,
             this.trustPrimitives: false,
             this.enableConcreteTypeInference: false,
             bool disableTypeInferenceFlag: false,

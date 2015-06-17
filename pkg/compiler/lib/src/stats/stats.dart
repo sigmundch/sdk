@@ -257,18 +257,45 @@ String recursiveDiagnosticString(Measurements measurements, Metric metric) {
   var sb = new StringBuffer();
   int indent = 0;
   helper(Metric m) {
-    sb.write('  ' * indent);
-    sb.write('${m.name}: ');
-    sb.write(measurements[m]);
-    if (m is! GroupedMetric) return;
+    //sb.write('  ' * indent);
+    int value = measurements[m];
+    if (m is! GroupedMetric) {
+      sb.write(value);
+      sb.write(' ${m.name}');
+      return;
+    }
+
+    int expected = 0;
+    for (var sub in m.submetrics) {
+      expected += measurements[sub];
+    }
+    if (value == expected) {
+      sb.write('[32m');
+      sb.write(value);
+    } else {
+      sb.write('[31m');
+      sb.write(value);
+      sb.write('[33m[');
+      sb.write(expected);
+    sb.write(']');
+    }
+    sb.write('[0m');
+    sb.write(' ${m.name}');
+
     bool first = true;
-    sb.write('\n');
+    //sb.write('\n');
+    sb.write('(');
     indent++;
     for (var sub in m.submetrics) {
+      if (first) {
+        first = false;
+      } else {
+        sb.write(' + ');
+      }
       helper(sub);
-      sb.write('\n');
     }
     indent--;
+    sb.write(')');
   }
   helper(metric);
   return sb.toString();

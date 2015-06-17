@@ -1706,11 +1706,11 @@ class TypeCheckerVisitor extends Visitor<DartType> {
         checkAssignable(initialization.assignmentOperator, initializer, type);
         if (node.type == null && node.modifiers.isVar && !initializer.isDynamic
           && compiler.trustUncheckedTypeAnnotations) {
-          var variable = elements[definition];
-          if (variable != null) {
-            var typePromotion = new TypePromotion(node, variable, initializer);
-            registerKnownTypePromotion(typePromotion);
-          }
+          //var variable = elements[definition];
+          //if (variable != null) {
+          //  var typePromotion = new TypePromotion(node, variable, initializer);
+          //  registerKnownTypePromotion(typePromotion);
+          //}
         }
       }
     }

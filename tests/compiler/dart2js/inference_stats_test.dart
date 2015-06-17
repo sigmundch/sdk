@@ -6,67 +6,157 @@
 library stats_test;
 
 import 'dart:async';
-import 'package:expect/expect.dart';
+import 'package:test/test.dart';
 import 'package:compiler/src/stats/stats.dart';
 import 'compiler_helper.dart';
 
-main() async {
-  await _check('''
-    main() {}
-    test() { int x = 3; } // nothing counted because test is unreachable.
-    ''');
+main() {
+  test('nothing is reachable, nothing to count', () {
+    return _check('''
+      main() {}
+      test() { int x = 3; }
+      ''');
+  });
 
-  await _check('''
-    main() => test();
-    test() { int x = 3; int y = x; }
-    ''',
-    localSend: 1); // from `int y = x`;
+  test('local variable read', () {
+    return _check('''
+      main() => test();
+      test() { int x = 3; int y = x; }
+      ''',
+      localSend: 1); // from `int y = x`;
+  });
 
-  await _check('''
-    class A {
-      get f => 1;
-    }
-    main() => test();
-    test() { new A(); }
-    ''',
-    constructorSend: 1);  // new A()
+  test('generative constructor call', () {
+    return _check('''
+      class A {
+        get f => 1;
+      }
+      main() => test();
+      test() { new A(); }
+      ''',
+      constructorSend: 1);  // from new A()
+  });
 
-  await _check('''
-    class A {
-      get f => 1;
-    }
-    main() => test();
-    test() { new A().f; }
-    ''',
-    constructorSend: 1, // new A()
-    instanceSend: 1); // _.f itself - type information not implemented yet.
+  group('instance call', () {
+    test('monomorphic only one implementor', () {
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        main() => test();
+        test() { new A().f; }
+        ''',
+        constructorSend: 1, // new A()
+        instanceSend: 1);   // f resolved to A.f
+    });
 
-  await _check('''
-    class A {
-      get f => 1;
-    }
-    class B {
-      get f => 1;
-    }
-    main() => test();
-    test() { new B().f; }
-    ''',
-    constructorSend: 1,
-    instanceSend: 1); // _.f itself - type information not implemented yet.
+    test('monomorphic only one type possible from types', () {
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        class B extends A {
+          get f => 1;
+        }
+        main() => test();
+        test() { new B().f; }
+        ''',
+        constructorSend: 1,
+        instanceSend: 1); // f resolved to B.f
+    });
 
-  await _check('''
-    class A {
-      get f => 1;
-    }
-    class B {
-      get f => 1;
-    }
-    main() => test();
-    test() { A x = new B(); x.f; }
-    ''',
-    constructorSend: 1, // new B()
-    localSend: 1, // x in x.f
-    virtualSend: 1); // x.f itself - type information not implemented yet.
+    test('monomorphic only one type possible from liveness', () {
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        class B extends A {
+          get f => 1;
+        }
+        main() => test();
+        test() { A x = new B(); x.f; }
+        ''',
+        constructorSend: 1, // new B()
+        localSend: 1,       // x in x.f
+        instanceSend: 1);  // x.f known to resolve to B.f
+    });
+
+    test('monomorphic one possible, more than one live', () {
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        class B extends A {
+          get f => 1;
+        }
+        main() { new A(); test(); }
+        test() { B x = new B(); x.f; }
+        ''',
+        constructorSend: 1, // new B()
+        localSend: 1,       // x in x.f
+        instanceSend: 1);   // x.f resolves to B.f
+    });
+
+    test('polymorphic-virtual couple possible types from liveness', () {
+        // Note: this would be an instanceSend if we used the inferrer.
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        class B extends A {
+          get f => 1;
+        }
+        main() { new A(); test(); }
+        test() { A x = new B(); x.f; }
+        ''',
+        constructorSend: 1, // new B()
+        localSend: 1,       // x in x.f
+        virtualSend: 1);    // x.f may be A.f or B.f (types alone is not enough)
+    });
+
+    test('polymorphic-dynamic: type annotations don\'t help', () {
+      return _check('''
+        class A {
+          get f => 1;
+        }
+        class B extends A {
+          get f => 1;
+        }
+        main() { new A(); test(); }
+        test() { var x = new B(); x.f; }
+        ''',
+        constructorSend: 1, // new B()
+        localSend: 1,       // x in x.f
+        dynamicSend: 1);    // x.f could be any `f` or no `f`
+    });
+  });
+
+  group('noSuchMethod', () {
+    test('error will be thrown', () {
+      /// no-such-method interaction
+      return _check('''
+        class A {
+        }
+        main() { test(); }
+        test() { new A().f; }
+        ''',
+        constructorSend: 1, // new B()
+        nsmErrorSend: 1);   // f not there, A has no nSM
+    });
+
+    test('nSM will be called', () {
+      /// no-such-method interaction
+      return _check('''
+        class A {
+          noSuchMethod(i) => null;
+        }
+        main() { test(); }
+        test() { new A().f; }
+        ''',
+        constructorSend: 1, // new B()
+        singleNsmCallSend: 1);   // f not there, A has nSM
+    });
+  });
 }
 
 
@@ -109,17 +199,17 @@ _check(String code, {int staticSend: 0, int superSend: 0, int localSend: 0,
   var globalResult = await _compileAndGetStats(code);
   var libs = globalResult.loose.libraries;
   var lib = libs.firstWhere((l) => l.uri == testFileUri,
-      orElse: () => Expect.fail("Cannot find the tested library."));
+      orElse: () => fail("Cannot find the tested library."));
   var function = lib.functions.firstWhere((f) => f.name == 'test',
-      orElse: () => Expect.fail("Cannot find function named 'test'."));
+      orElse: () => fail("Cannot find function named 'test'."));
   var result = function.measurements;
 
   _compareMetric(Metric key) {
     var expectedValue = expected[key];
     var value = result[key];
     if (value == expectedValue) return;
-    Expect.equals(expected[key], result[key],
-        "count for `$key` didn't match:\n"
+    expect(expected[key], result[key],
+        reason: "count for `$key` didn't match:\n"
         "expected measurements:\n${recursiveDiagnosticString(expected,key)}\n"
         "actual measurements:\n${recursiveDiagnosticString(result, key)}");
   }
@@ -138,8 +228,9 @@ Future<GlobalResult> _compileAndGetStats(String code) async {
       trustUncheckedTypeAnnotations: true);
   compiler.stopAfterTypeInference = true;
   compiler.registerSource(testFileUri, code);
+  compiler.diagnosticHandler = createHandler(compiler, code);
   await compiler.runCompiler(testFileUri);
-  Expect.isFalse(compiler.compilationFailed,
-      'Unexpected compilation error(s): ${compiler.errors}');
+  expect(compiler.compilationFailed, false,
+      reason: 'Unexpected compilation error(s): ${compiler.errors}');
   return compiler.statsBuilderTask.resultForTesting;
 }

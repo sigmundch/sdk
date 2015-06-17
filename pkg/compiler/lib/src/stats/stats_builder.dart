@@ -123,20 +123,36 @@ class _StatsVisitor<T> extends Visitor<T>
       measurements[Metric.send] += 2;
     }
     super.visitSend(node);
-    _check(node, 'after');
+    _check(node, 'after ');
   }
 
   visitNewExpression(NewExpression node) {
     _check(node, 'before');
     measurements[Metric.send]++;
     super.visitNewExpression(node);
-    _check(node, 'after');
+    _check(node, 'after ');
   }
 
   handleLocal() {
     measurements[Metric.monomorphicSend]++;
     measurements[Metric.localSend]++;
   }
+
+  handleSingleInstance() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.instanceSend]++;
+  }
+
+  handleSingleInterceptor() {
+    measurements[Metric.monomorphicSend]++;
+    measurements[Metric.interceptorSend]++;
+  }
+
+  handleMultiInterceptor() {
+    measurements[Metric.polymorphicSend]++;
+    measurements[Metric.multiInterceptorSend]++;
+  }
+
   handleConstructor() {
     measurements[Metric.monomorphicSend]++;
     measurements[Metric.constructorSend]++;
@@ -256,9 +272,7 @@ class _StatsVisitor<T> extends Visitor<T>
     handleDynamic();
   }
 
-  void visitDynamicPropertyGet(
-      Send node, Node receiver, Selector selector, T arg) {
-
+  handleDynamic2(Node receiver, Selector selector) {
     // staticSend: no (automatically)
     // superSend: no (automatically)
     // localSend: no (automatically)
@@ -283,25 +297,30 @@ class _StatsVisitor<T> extends Visitor<T>
     //                       combination?
     // dynamicSend: any combination of the above.
 
-    boolish hasSelector = info.hasSelector(receiver, selector);
-    boolish hasNsm = info.hasNoSuchMethod(receiver);
+    ReceiverInfo receiverInfo = info.infoForReceiver(receiver);
+    SelectorInfo selectorInfo = info.infoForSelector(receiver, selector);
+    boolish hasSelector = selectorInfo.exists;
+    boolish hasNsm = receiverInfo.hasNoSuchMethod;
+
     if (hasSelector == boolish.no) {
       if (hasNsm == boolish.no) {
         handleNSMError();
       } else if (hasNsm == boolish.yes) {
-        if (info.possibleNumberOfNSM(receiver) == 1) {
-          handleNSMSingle();
-        } else {
+        //if (receiverInfo.possibleNumberOfNSM == 1) {
+        //  handleNSMSingle();
+        //} else {
           handleNSMAny();
-        }
+        //}
+      } else {
+        handleDynamic();
       }
       return;
     }
 
-    int possibleTargets = info.possibleTargets(receiver, selector);
-    boolish usesInterceptor = info.usesInterceptor(receiver, selector);
+    boolish usesInterceptor = selectorInfo.usesInterceptor;
+    int possibleTargets = selectorInfo.possibleTargets;
     if (hasSelector == boolish.yes) {
-      if (possibleTargets == 1) {
+      if (selectorInfo.isAccurate && selectorInfo.possibleTargets == 1) {
         assert (usesInterceptor != boolish.maybe);
         if (usesInterceptor == boolish.yes) {
           handleSingleInterceptor();
@@ -319,13 +338,17 @@ class _StatsVisitor<T> extends Visitor<T>
       }
       return;
     }
-
     handleDynamic();
+  }
+
+  void visitDynamicPropertyGet(
+      Send node, Node receiver, Selector selector, T arg) {
+    handleDynamic2(receiver, selector);
   }
 
   void visitDynamicPropertyInvoke(
       Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
-    handleDynamic();
+    handleDynamic2(receiver, selector);
   }
 
   void visitDynamicPropertyPostfix(Send node, Node receiver,
@@ -346,7 +369,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitDynamicPropertySet(
       SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
-    handleDynamic();
+    handleDynamic2(receiver, selector);
   }
 
   void visitEquals(Send node, Node left, Node right, T arg) {
@@ -1283,7 +1306,6 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 
   void visitUnresolvedGet(Send node, Element element, T arg) {
-    print('-> $node ==> $element');
     handleNSMError();
   }
 
@@ -1804,10 +1826,9 @@ class _StatsVisitor<T> extends Visitor<T>
         !measurements.checkInvariant(Metric.monomorphicSend) ||
         !measurements.checkInvariant(Metric.polymorphicSend)) {
       compiler.reportError(
-          node, MessageKind.GENERIC, {'text': 'bad $msg\nlast: $last'});
+          node, MessageKind.GENERIC, {'text': 'bad\n-- $msg\nlast:\n-- $last\n'});
       last = msg;
     } else {
-      //compiler.reportInfo(node, MessageKind.GENERIC, {'text': 'good $msg $sb'});
       last = msg;
     }
   }
@@ -1823,14 +1844,14 @@ class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
       : compiler = compiler,
         statsVisitor = new _StatsVisitor(compiler, elements,
             // TODO(sigmund): accept a list of results
-            new TrustTypesAnalysisResult(elements)),
+            new TrustTypesAnalysisResult(elements, compiler.world)),
         super(elements);
 
   void visitSend(Send node) {
     try {
       node.accept(statsVisitor);
-    } catch (e) {
-      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e'});
+    } catch (e, t) {
+      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e\n$t'});
     }
     super.visitSend(node);
   }
@@ -1838,8 +1859,8 @@ class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
   void visitNewExpression(NewExpression node) {
     try {
       node.accept(statsVisitor);
-    } catch (e) {
-      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e'});
+    } catch (e, t) {
+      compiler.reportError(node, MessageKind.GENERIC, {'text': '$e\n$t'});
     }
     super.visitNewExpression(node);
   }
