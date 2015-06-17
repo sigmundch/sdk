@@ -430,7 +430,7 @@ class TypeCheckerVisitor extends Visitor<DartType> {
     if (result == null) {
       compiler.internalError(node, 'Type is null.');
     }
-    return result;
+    return _record(node, result);
   }
 
   void checkTypePromotion(Node node, TypePromotion typePromotion,
@@ -1115,6 +1115,21 @@ class TypeCheckerVisitor extends Visitor<DartType> {
 
   }
 
+  static bool _reported = false;
+  DartType _record(Node node, DartType type) {
+    if (node is! Expression) return type;
+    if (compiler.trustUncheckedTypeAnnotations && executableContext != null &&
+        !executableContext.library.isPlatformLibrary && !type.isDynamic) {
+      if (!_reported) {
+        print('> active');
+        _reported = true;
+      }
+      //print('save: [32m$node[0m: $type');
+      elements.typesCache[node] = type;
+    }
+    return type;
+  }
+
   DartType visitSend(Send node) {
     if (elements.isAssert(node)) {
       return analyzeInvocation(node, const AssertAccess());
@@ -1689,6 +1704,14 @@ class TypeCheckerVisitor extends Visitor<DartType> {
         SendSet initialization = definition;
         DartType initializer = analyzeNonVoid(initialization.arguments.head);
         checkAssignable(initialization.assignmentOperator, initializer, type);
+        if (node.type == null && node.modifiers.isVar && !initializer.isDynamic
+          && compiler.trustUncheckedTypeAnnotations) {
+          var variable = elements[definition];
+          if (variable != null) {
+            var typePromotion = new TypePromotion(node, variable, initializer);
+            registerKnownTypePromotion(typePromotion);
+          }
+        }
       }
     }
     return const StatementType();

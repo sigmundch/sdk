@@ -22,9 +22,6 @@ main() async {
     ''',
     localSend: 1); // from `int y = x`;
 
-  /// Need work:
-  /// - need to add _checkWithTypeOnly, _checkWithInferredType
-
   await _check('''
     class A {
       get f => 1;
@@ -136,7 +133,9 @@ Uri testFileUri = new Uri(scheme: 'source');
 /// Helper that runs the compiler and returns the [GlobalResult] computed for
 /// it.
 Future<GlobalResult> _compileAndGetStats(String code) async {
-  MockCompiler compiler = new MockCompiler.internal();
+  MockCompiler compiler = new MockCompiler.internal(
+      trustTypeAnnotations: true,
+      trustUncheckedTypeAnnotations: true);
   compiler.stopAfterTypeInference = true;
   compiler.registerSource(testFileUri, code);
   await compiler.runCompiler(testFileUri);

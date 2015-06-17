@@ -15,6 +15,7 @@ import '../dart2jslib.dart'
     show CompilerTask, Compiler, SourceSpan, MessageKind;
 import '../elements/visitor.dart' show ElementVisitor;
 import '../scanner/scannerlib.dart' show PartialElement;
+import 'type_queries.dart';
 
 /// Task that collects metric information about types.
 class StatsBuilderTask extends CompilerTask {
@@ -103,11 +104,12 @@ class StatsBuilder extends RecursiveElementVisitor {
 class _StatsVisitor<T> extends Visitor<T>
     with SendResolverMixin<T>, SemanticSendResolvedMixin<T>
     implements SemanticSendVisitor<Void, T> {
+  AnalysisResult info;
   SemanticSendVisitor<Void, T> get sendVisitor => this;
   Measurements measurements = new Measurements.reachableFunction();
   final Compiler compiler;
   final TreeElements elements;
-  _StatsVisitor(this.compiler, this.elements);
+  _StatsVisitor(this.compiler, this.elements, this.info);
 
   visitSend(Send node) {
     _check(node, 'before');
@@ -283,16 +285,15 @@ class _StatsVisitor<T> extends Visitor<T>
 
     boolish hasSelector = info.hasSelector(receiver, selector);
     boolish hasNsm = info.hasNoSuchMethod(receiver);
-    if (hasSelector == boolish.no && hasNsm == boolish.no) {
-      handleNSMError();
-      return;
-    }
-
-    if (hasSelector == boolish.no && hasNsm == boolish.yes) {
-      if (info.possibleNumberOfNSM(receiver) == 1) {
-        handleNSMSingle();
-      } else {
-        handleNSMAny();
+    if (hasSelector == boolish.no) {
+      if (hasNsm == boolish.no) {
+        handleNSMError();
+      } else if (hasNsm == boolish.yes) {
+        if (info.possibleNumberOfNSM(receiver) == 1) {
+          handleNSMSingle();
+        } else {
+          handleNSMAny();
+        }
       }
       return;
     }
@@ -307,7 +308,6 @@ class _StatsVisitor<T> extends Visitor<T>
         } else {
           handleSingleInstance();
         }
-        return;
       } else {
         if (usesInterceptor == boolish.no) {
           handleVirtual();
@@ -316,9 +316,11 @@ class _StatsVisitor<T> extends Visitor<T>
         } else {
           handleDynamic();
         }
-        return;
       }
+      return;
     }
+
+    handleDynamic();
   }
 
   void visitDynamicPropertyInvoke(
@@ -1804,7 +1806,6 @@ class _StatsVisitor<T> extends Visitor<T>
       compiler.reportError(
           node, MessageKind.GENERIC, {'text': 'bad $msg\nlast: $last'});
       last = msg;
-      exit(1);
     } else {
       //compiler.reportInfo(node, MessageKind.GENERIC, {'text': 'good $msg $sb'});
       last = msg;
@@ -1820,7 +1821,9 @@ class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
   Measurements get measurements => statsVisitor.measurements;
   _StatsTraversalVisitor(Compiler compiler, TreeElements elements)
       : compiler = compiler,
-        statsVisitor = new _StatsVisitor(compiler, elements),
+        statsVisitor = new _StatsVisitor(compiler, elements,
+            // TODO(sigmund): accept a list of results
+            new TrustTypesAnalysisResult(elements)),
         super(elements);
 
   void visitSend(Send node) {

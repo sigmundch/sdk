@@ -705,6 +705,7 @@ abstract class Compiler implements DiagnosticListener {
   final bool enableTypeAssertions;
   final bool enableUserAssertions;
   final bool trustTypeAnnotations;
+  final bool trustUncheckedTypeAnnotations;
   final bool trustPrimitives;
   final bool enableConcreteTypeInference;
   final bool disableTypeInferenceFlag;
@@ -1027,6 +1028,7 @@ abstract class Compiler implements DiagnosticListener {
   Compiler({this.enableTypeAssertions: false,
             this.enableUserAssertions: false,
             this.trustTypeAnnotations: false,
+            this.trustUncheckedTypeAnnotations: false,
             this.trustPrimitives: false,
             this.enableConcreteTypeInference: false,
             bool disableTypeInferenceFlag: false,
@@ -1520,6 +1522,7 @@ abstract class Compiler implements DiagnosticListener {
     }).then((_) {
       compileLoadedLibraries();
     });
+
   }
 
   void computeMain() {

@@ -17,6 +17,7 @@ abstract class TreeElements {
   Iterable<Element> get otherDependencies;
 
   Element operator[](Node node);
+  Map<Node, DartType> get typesCache;
 
   SendStructure getSendStructure(Send send);
 
@@ -93,6 +94,7 @@ class TreeElementMapping implements TreeElements {
   final AnalyzableElement analyzedElement;
   Map<Spannable, Selector> _selectors;
   Map<Node, DartType> _types;
+  Map<Node, DartType> typesCache = <Node, DartType>{};
   Setlet<Node> _superUses;
   Setlet<Element> _otherDependencies;
   Map<Node, ConstantExpression> _constants;
