@@ -1,15 +1,20 @@
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
 /// Utility to display [GlobalResults] as a table on the command line.
 library stats_viewer;
 
 import 'dart:math' show max;
 import 'stats.dart';
 
+/// Formats [results] as a table.
 String formatAsTable(GlobalResult results) {
   var visitor = new _Counter();
   results.accept(visitor);
   var table = new _Table();
   table.declareColumn('bundle');
-  
+
   int colorIndex = 0;
   visitAllMetrics((m, parent) {
     if (m is GroupedMetric) colorIndex = (colorIndex + 1) % _groupColors.length;

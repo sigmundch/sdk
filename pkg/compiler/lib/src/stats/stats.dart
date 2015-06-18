@@ -1,8 +1,12 @@
-/// Collects information used to debug and analyzer internal parts of the
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+/// Collects information used to debug and analyze internal parts of the
 /// compiler.
 ///
 /// Currently this is focused mainly on data from types and inference, such as
-/// understanding of types of expressions and precision of send operations. 
+/// understanding of types of expressions and precision of send operations.
 ///
 /// This library focuses on representing the information itself.
 /// `stats_builder.dart` contains visitors we use to collect the data,
@@ -37,11 +41,14 @@ class GlobalResult {
   accept(ResultVisitor v) => v.visitGlobal(this);
 }
 
-/// Summarizes results for a group of libraries. [GlobalResult] defines a group
-/// the systems libraries, for loose libraries, and a group per package.
+/// Summarizes results for a group of libraries. Used by [GlobalResult] to group
+/// the systems libraries, loose libraries, and to create a separate a group per
+/// package.
 class BundleResult {
   /// Name of the group.
   final String name;
+
+  /// Library results that are part of this group.
   final List<LibraryResult> libraries = [];
 
   BundleResult(this.name);
@@ -53,6 +60,7 @@ class LibraryResult {
   final Uri uri;
 
   /// List of class names.
+  // TODO(sigmund): delete? Or should we have a bundle per class?
   final List<String> classes = [];
 
   /// Results per function and method in this library
@@ -80,30 +88,6 @@ const List<Metric> _topLevelMetrics = const [
   Metric.send,
 ];
 
-const List<Metric> _allMetrics = const [
-  Metric.functions,
-  Metric.reachableFunctions,
-  Metric.send,
-  Metric.dynamicSend,
-  Metric.virtualSend,
-  Metric.staticSend,
-  Metric.localSend,
-  //Metric.newSend,
-  Metric.monomorphicSend,
-//  Metric.dynamicGet,
-//  Metric.dynamicSet,
-//  Metric.dynamicInvoke,
-////  Metric.staticGet,
-////  Metric.staticSet,
-////  Metric.staticInvoke,
-//  Metric.virtualGet,
-//  Metric.virtualSet,
-//  Metric.virtualInvoke,
-//  Metric.monomorphicGet,
-//  Metric.monomorphicSet,
-//  Metric.monomorphicInvoke,
-];
-
 /// Apply `f` on each metric in DFS order on the metric "tree".
 visitAllMetrics(f) {
   helper(Metric m, [Metric parent]) {
@@ -115,6 +99,7 @@ visitAllMetrics(f) {
 
 /// A metric we intend to measure.
 class Metric {
+  /// Name for the metric.
   final String name;
 
   const Metric(this.name);
@@ -125,6 +110,8 @@ class Metric {
   static const Metric functions = const GroupedMetric('functions', const [
       reachableFunctions,
   ]);
+
+  /// Subset of the functions that are reachable.
   static const Metric reachableFunctions = const Metric('reachable functions');
 
   /// Total sends, and classification of sends:
@@ -198,6 +185,8 @@ class GroupedMetric extends Metric {
   const GroupedMetric(String name, this.submetrics) : super(name);
 }
 
+/// A collection of data points for each metric. Used to summarize a single
+/// fucntion, a library, a package, or an entire program.
 class Measurements {
   final Map<Metric, int> counters;
 
@@ -206,7 +195,7 @@ class Measurements {
   const Measurements.unreachableFunction()
     : counters = const { Metric.functions: 1};
 
-  Measurements.reachableFunction() 
+  Measurements.reachableFunction()
     : counters = { Metric.functions: 1, Metric.reachableFunctions: 1};
 
   operator[](Metric key) {
@@ -215,11 +204,14 @@ class Measurements {
   }
   operator[]=(Metric key, int value) => counters[key] = value;
 
+  /// Add the counters from [other] into this set of measurements.
   addFrom(Measurements other) {
     other.counters.forEach((k, v) => this[k] += v);
   }
 
-  bool checkInvariant(Metric key) {
+  /// Check that every grouped metric totals the individual counts of it's
+  /// submetric.
+  bool checkInvariant(GroupedMetric key) {
     int total = this[key];
     int submetricTotal = key.submetrics.fold(0, (n, m) => n + this[m]);
     return total == submetricTotal;
@@ -253,6 +245,7 @@ abstract class RecursiveResultVisitor extends ResultVisitor {
   }
 }
 
+/// Color-highighted string used mainly to debug our invariants.
 String recursiveDiagnosticString(Measurements measurements, Metric metric) {
   var sb = new StringBuffer();
   int indent = 0;

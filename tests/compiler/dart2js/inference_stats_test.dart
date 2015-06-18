@@ -223,9 +223,7 @@ Uri testFileUri = new Uri(scheme: 'source');
 /// Helper that runs the compiler and returns the [GlobalResult] computed for
 /// it.
 Future<GlobalResult> _compileAndGetStats(String code) async {
-  MockCompiler compiler = new MockCompiler.internal(
-      trustTypeAnnotations: true,
-      trustUncheckedTypeAnnotations: true);
+  MockCompiler compiler = new MockCompiler.internal(computeAnalysisStats: true);
   compiler.stopAfterTypeInference = true;
   compiler.registerSource(testFileUri, code);
   compiler.diagnosticHandler = createHandler(compiler, code);

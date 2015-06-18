@@ -1,24 +1,33 @@
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+/// API to get results from a static analysis of the source program.
+// TODO(sigmund): split out implementations out of this file.
+library compiler.src.stats.analysis_result;
+
 import '../tree/tree.dart' show Node;
 import '../universe/universe.dart' show Selector;
 import '../resolution/resolution.dart' show TreeElements;
 import '../dart2jslib.dart' show ClassWorld;
 import '../dart_types.dart' show InterfaceType;
 
-// /// TODO:
-// - define what we need from a type, from a set of types, from a selector
-// - define queries to determine whether
-//  -- an interceptor may be used
-//  -- nsm may be fired
-//  -- nsm may be caught
-//  -- a selector is only implemented in one of a group of types
-//  -- filter out members from abstract classes that are always overriden (except
-//  for super calls)
-//  -- 
-
 /// A three-value logic bool (yes, no, maybe). We say that `yes` and `maybe` are
 /// "truthy", while `no` and `maybe` are "falsy".
+// TODO(sigmund): is it worth using an enum? or switch to true/false/null?
 enum boolish { yes, no, maybe }
 
+/// Specifies results of some kind of static analysis on a source program.
+abstract class AnalysisResult {
+  /// Information computed about a specific [receiver].
+  ReceiverInfo infoForReceiver(Node receiver);
+
+  /// Information computed about a specific [selector] applied to a specific
+  /// [receiver].
+  SelectorInfo infoForSelector(Node receiver, Selector selector);
+}
+
+/// Analysis information about a receiver of a send.
 abstract class ReceiverInfo {
   /// Receiver node for which this information is computed.
   final Node receiver;
@@ -33,6 +42,7 @@ abstract class ReceiverInfo {
   boolish get isNull;
 }
 
+/// Information about a specific selector applied to a specific receiver.
 abstract class SelectorInfo {
   /// Receiver node of the [selector].
   final Node receiver;
@@ -58,27 +68,18 @@ abstract class SelectorInfo {
   ///   * If [exists] is `maybe`, the value is considered 0 or more.
   int get possibleTargets;
 
-  /// Whether the infromation about [possibleTargets] is accurate.
+  /// Whether the information about [possibleTargets] is accurate.
   bool get isAccurate;
 }
 
-/// Specifies results of some kind of static analysis on a source program.
-abstract class AnalysisResult {
-  /// Information computed about a specific [receiver].
-  ReceiverInfo infoForReceiver(Node receiver);
-
-  /// Information computed about a specific [selector] applied to a specific
-  /// [receiver].
-  SelectorInfo infoForSelector(Node receiver, Selector selector);
-}
 
 /// A naive [AnalysisResult] that tells us very little. This is the most
 /// conservative we can be when we only use information from the AST structure
-/// and the resolution, but no type information.
+/// and from resolution, but no type information.
 class NaiveAnalysisResult implements AnalysisResult {
   NaiveAnalysisResult();
 
-  ReceiverInfo infoForReceiver(Node receiver) => 
+  ReceiverInfo infoForReceiver(Node receiver) =>
     new NativeReceiverInfo(receiver);
   SelectorInfo infoForSelector(Node receiver, Selector selector) =>
     new NaiveSelectorInfo(receiver, selector);
@@ -113,7 +114,7 @@ class TrustTypesAnalysisResult implements AnalysisResult {
 
   TrustTypesAnalysisResult(this.elements, this.world);
 
-  ReceiverInfo infoForReceiver(Node receiver) => 
+  ReceiverInfo infoForReceiver(Node receiver) =>
     new TrustTypesReceiverInfo(receiver, elements.typesCache[receiver], world);
   SelectorInfo infoForSelector(Node receiver, Selector selector) =>
     new TrustTypesSelectorInfo(receiver, elements.typesCache[receiver], selector, world);
@@ -128,18 +129,20 @@ class TrustTypesReceiverInfo implements ReceiverInfo {
       Node receiver, InterfaceType type, ClassWorld world) {
     boolish hasNoSuchMethod;
     if (type != null) {
-      bool someNSM = false;
-      bool allNSM = true;
+      int classes = 0;
+      int nsm = 0;
       for (var cls in world.subclassesOf(type.element)) {
         var member = cls.lookupMember('noSuchMethod');
-        if (member != null && !member.isAbstract) {
-          someNSM = true;
-        } else {
-          allNSM = false;
-        }
+        classes++;
+        if (member != null && !member.isAbstract) nsm++;
       }
-      hasNoSuchMethod = 
-          someNSM ? (allNSM ? boolish.yes : boolish.maybe) : boolish.no;
+      // TODO(sigmund):
+      // - need to be more precise about which classes have nSM
+      // - need to save the count of nsm, in case this can be a monomorphic nSM
+      // call.
+      hasNoSuchMethod = (nsm == 0)
+          ? boolish.no
+          : (nsm == classes ? boolish.yes : boolish.maybe);
     } else {
       hasNoSuchMethod = boolish.maybe;
     }
@@ -199,5 +202,3 @@ class TrustTypesSelectorInfo implements SelectorInfo {
       this.receiver, this.selector, this.exists, this.usesInterceptor,
       this.possibleTargets, this.isAccurate);
 }
-
-

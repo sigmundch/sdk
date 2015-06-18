@@ -1,23 +1,30 @@
-library inference_stats;
+// Copyright (c) 2015, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+/// Computes statistical data about a program. See `stats.dart` for more details
+/// on the kind of data we collect.
+library compiler.src.stats.stats_builder;
 
 import 'dart:io';
 
-import '../stats/stats.dart';
-import '../stats/stats_viewer.dart';
+import '../dart2jslib.dart'
+    show CompilerTask, Compiler, SourceSpan, MessageKind;
 import '../dart_types.dart';
 import '../elements/elements.dart';
+import '../elements/visitor.dart' show ElementVisitor;
 import '../resolution/operators.dart';
 import '../resolution/resolution.dart';
 import '../resolution/semantic_visitor.dart';
+import '../scanner/scannerlib.dart' show PartialElement;
+import '../stats/stats.dart';
+import '../stats/stats_viewer.dart';
 import '../tree/tree.dart';
 import '../universe/universe.dart' show Selector, CallStructure;
-import '../dart2jslib.dart'
-    show CompilerTask, Compiler, SourceSpan, MessageKind;
-import '../elements/visitor.dart' show ElementVisitor;
-import '../scanner/scannerlib.dart' show PartialElement;
-import 'type_queries.dart';
 
-/// Task that collects metric information about types.
+import 'analysis_result.dart';
+
+/// Task that collects all the data.
 class StatsBuilderTask extends CompilerTask {
   String get name => "Inference Stats";
 
@@ -32,21 +39,25 @@ class StatsBuilderTask extends CompilerTask {
         lib.accept(visitor, null);
       }
       resultForTesting = visitor.result;
-      // TODO(sigmund): comment this out
-      //print(formatAsTable(visitor.result));
+      // TODO(sigmund): emit a file instead, do visualization as a separate
+      // process.
+      if (const bool.fromEnvironment('print_stats')) print(formatAsTable(visitor.result));
     });
   }
 }
 
 /// Visitor that goes through all elements and builds the metrics information
-/// from it.
+/// from them.
 class StatsBuilder extends RecursiveElementVisitor {
+  /// The results produced by the builder.
   final GlobalResult result = new GlobalResult();
+
   final Compiler compiler;
-  StatsBuilder(this.compiler);
+
+  // Current library being visited.
   LibraryResult currentLib;
 
-  merge(r) => null;
+  StatsBuilder(this.compiler);
 
   visitLibraryElement(LibraryElement e, arg) {
     var uri = e.canonicalUri;
@@ -98,39 +109,51 @@ class StatsBuilder extends RecursiveElementVisitor {
     });
   }
 
+  @override
+  merge(r) => null;
+
   // TODO(sigmund): visit initializers too, they can contain `sends`.
 }
 
+/// Visitor that categorizes data about an individual send.
 class _StatsVisitor<T> extends Visitor<T>
     with SendResolverMixin<T>, SemanticSendResolvedMixin<T>
     implements SemanticSendVisitor<Void, T> {
-  AnalysisResult info;
-  SemanticSendVisitor<Void, T> get sendVisitor => this;
-  Measurements measurements = new Measurements.reachableFunction();
+
+  // TODO(sigmund): consider passing in several AnalysisResults at once, so we
+  // can compute the different metrics together.
+  /// Information we know about the program from static analysis.
+  final AnalysisResult info;
+
+  /// Results from this function.
+  final Measurements measurements = new Measurements.reachableFunction();
+
   final Compiler compiler;
   final TreeElements elements;
+
+  SemanticSendVisitor<Void, T> get sendVisitor => this;
+
   _StatsVisitor(this.compiler, this.elements, this.info);
 
   visitSend(Send node) {
-    _check(node, 'before');
+    _checkInvariant(node, 'before');
     measurements[Metric.send]++;
     if (node is SendSet &&
         ((node.assignmentOperator != null &&
                 node.assignmentOperator.source != '=') ||
             node.isPrefix ||
             node.isPostfix)) {
-      print('=> ${node.assignmentOperator.runtimeType}');
       measurements[Metric.send] += 2;
     }
     super.visitSend(node);
-    _check(node, 'after ');
+    _checkInvariant(node, 'after ');
   }
 
   visitNewExpression(NewExpression node) {
-    _check(node, 'before');
+    _checkInvariant(node, 'before');
     measurements[Metric.send]++;
     super.visitNewExpression(node);
-    _check(node, 'after ');
+    _checkInvariant(node, 'after ');
   }
 
   handleLocal() {
@@ -175,6 +198,7 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 
   handleNSMSuper(Element targetType) {
+    // TODO(sigmund):...
     print('\n||||-> ${targetType.runtimeType}');
     //if (targetType contains a nSM function) {
     //  handleNSMSingle();
@@ -272,7 +296,7 @@ class _StatsVisitor<T> extends Visitor<T>
     handleDynamic();
   }
 
-  handleDynamic2(Node receiver, Selector selector) {
+  handleDynamicProperty(Node receiver, Selector selector) {
     // staticSend: no (automatically)
     // superSend: no (automatically)
     // localSend: no (automatically)
@@ -282,7 +306,8 @@ class _StatsVisitor<T> extends Visitor<T>
     // nsmErrorSend:      receiver has no `selector` nor nSM.
     // singleNsmCallSend: receiver has no `selector`, but definitely has `nSM`
     // instanceSend:      receiver has `selector`, no need to use an interceptor
-    // interceptorSend:   receiver has `selector`, but we know we need an interceptor to get it 
+    // interceptorSend:   receiver has `selector`, but we know we need an
+    //                    interceptor to get it
 
     // multiNsmCallSend:  receiver has no `selector`, not sure if receiver has
     //                    nSM, or not sure which nSM is called (does this one
@@ -343,12 +368,12 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
-    handleDynamic2(receiver, selector);
+    handleDynamicProperty(receiver, selector);
   }
 
   void visitDynamicPropertyInvoke(
       Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
-    handleDynamic2(receiver, selector);
+    handleDynamicProperty(receiver, selector);
   }
 
   void visitDynamicPropertyPostfix(Send node, Node receiver,
@@ -369,7 +394,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
   void visitDynamicPropertySet(
       SendSet node, Node receiver, Selector selector, Node rhs, T arg) {
-    handleDynamic2(receiver, selector);
+    handleDynamicProperty(receiver, selector);
   }
 
   void visitEquals(Send node, Node left, Node right, T arg) {
@@ -1820,7 +1845,7 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 
   String last;
-  _check(node, String msg) {
+  _checkInvariant(node, String msg) {
     msg = '$msg ${recursiveDiagnosticString(measurements, Metric.send)}';
     if (!measurements.checkInvariant(Metric.send) ||
         !measurements.checkInvariant(Metric.monomorphicSend) ||
@@ -1834,7 +1859,7 @@ class _StatsVisitor<T> extends Visitor<T>
   }
 }
 
-/// Visitor that collects statistics about our understanding of a function.
+/// Visitor that collects statistics for a single function.
 class _StatsTraversalVisitor<T> extends TraversalVisitor<Void, T>
     implements SemanticSendVisitor<Void, T> {
   final Compiler compiler;
@@ -1915,7 +1940,6 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
 
   @override
   R visitFunctionElement(FunctionElement e, A arg) {
-    //return super.visitFunctionElement(e, arg);
   }
 
   @override
@@ -1952,9 +1976,6 @@ abstract class RecursiveElementVisitor<R, A> extends ElementVisitor<R, A> {
   }
 }
 
-Set<String> _messages = new Set<String>();
 _debug(String message) {
-  //if (_messages.add(message)) {
   print('[33mdebug:[0m $message');
-  //}
 }

@@ -1118,13 +1118,13 @@ class TypeCheckerVisitor extends Visitor<DartType> {
   static bool _reported = false;
   DartType _record(Node node, DartType type) {
     if (node is! Expression) return type;
-    if (compiler.trustUncheckedTypeAnnotations && executableContext != null &&
+    if (compiler.computeAnalysisStats && 
+        executableContext != null &&
         !executableContext.library.isPlatformLibrary && !type.isDynamic) {
       if (!_reported) {
-        print('> active');
+        print('> computeAnalysisStatis is on - caching types of expressions');
         _reported = true;
       }
-      //print('save: [32m$node[0m: $type');
       elements.typesCache[node] = type;
     }
     return type;
@@ -1704,14 +1704,14 @@ class TypeCheckerVisitor extends Visitor<DartType> {
         SendSet initialization = definition;
         DartType initializer = analyzeNonVoid(initialization.arguments.head);
         checkAssignable(initialization.assignmentOperator, initializer, type);
-        if (node.type == null && node.modifiers.isVar && !initializer.isDynamic
-          && compiler.trustUncheckedTypeAnnotations) {
-          //var variable = elements[definition];
-          //if (variable != null) {
-          //  var typePromotion = new TypePromotion(node, variable, initializer);
-          //  registerKnownTypePromotion(typePromotion);
-          //}
-        }
+        // TODO(sigmund): explore inferring a type for `var` using the RHS.
+        // if (node.type == null && node.modifiers.isVar && !initializer.isDynamic) {
+        //   var variable = elements[definition];
+        //   if (variable != null) {
+        //     var typePromotion = new TypePromotion(node, variable, initializer);
+        //     registerKnownTypePromotion(typePromotion);
+        //   }
+        // }
       }
     }
     return const StatementType();
