@@ -4,26 +4,6 @@ import '../resolution/resolution.dart' show TreeElements;
 import '../dart2jslib.dart' show ClassWorld;
 import '../dart_types.dart' show InterfaceType;
 
-// class TypeSet {
-// 
-//   // Whether a type is in this set
-//   bool contains(Element type);
-//   Set<Element> enumerateTypes();
-// 
-//   bool mayHaveNoSuchMethod();
-//   bool mustHaveNoSuchMethod();
-// }
-// 
-// class InferenceService {
-//   TypeInfo infoForType(type);
-//   TypeSet infoForSelector(node, selector);
-// }
-// 
-// class TypeInfo {
-//   Element type;
-//   bool get hasNoSuchMethod;
-// }
-// 
 // /// TODO:
 // - define what we need from a type, from a set of types, from a selector
 // - define queries to determine whether
@@ -38,7 +18,6 @@ import '../dart_types.dart' show InterfaceType;
 /// A three-value logic bool (yes, no, maybe). We say that `yes` and `maybe` are
 /// "truthy", while `no` and `maybe` are "falsy".
 enum boolish { yes, no, maybe }
-
 
 abstract class ReceiverInfo {
   /// Receiver node for which this information is computed.
@@ -83,10 +62,26 @@ abstract class SelectorInfo {
   bool get isAccurate;
 }
 
-class AnalysisResult {
-
+/// Specifies results of some kind of static analysis on a source program.
+abstract class AnalysisResult {
+  /// Information computed about a specific [receiver].
   ReceiverInfo infoForReceiver(Node receiver);
+
+  /// Information computed about a specific [selector] applied to a specific
+  /// [receiver].
   SelectorInfo infoForSelector(Node receiver, Selector selector);
+}
+
+/// A naive [AnalysisResult] that tells us very little. This is the most
+/// conservative we can be when we only use information from the AST structure
+/// and the resolution, but no type information.
+class NaiveAnalysisResult implements AnalysisResult {
+  NaiveAnalysisResult();
+
+  ReceiverInfo infoForReceiver(Node receiver) => 
+    new NativeReceiverInfo(receiver);
+  SelectorInfo infoForSelector(Node receiver, Selector selector) =>
+    new NaiveSelectorInfo(receiver, selector);
 }
 
 class NaiveReceiverInfo implements ReceiverInfo {
@@ -109,25 +104,49 @@ class NaiveSelectorInfo implements SelectorInfo {
   bool get isAccurate => false;
 }
 
-/// A naive [AnalysisResult] that tells us nothing.
-class NaiveAnalysisResult implements AnalysisResult {
-  NaiveAnalysisResult();
+
+/// An [AnalysisResult] produced by using type-propagation based on
+/// trusted type annotations.
+class TrustTypesAnalysisResult implements AnalysisResult {
+  final ClassWorld world;
+  final TreeElements elements;
+
+  TrustTypesAnalysisResult(this.elements, this.world);
 
   ReceiverInfo infoForReceiver(Node receiver) => 
-    new NativeReceiverInfo(receiver);
+    new TrustTypesReceiverInfo(receiver, elements.typesCache[receiver], world);
   SelectorInfo infoForSelector(Node receiver, Selector selector) =>
-    new NaiveSelectorInfo(receiver, selector);
+    new TrustTypesSelectorInfo(receiver, elements.typesCache[receiver], selector, world);
 }
 
 class TrustTypesReceiverInfo implements ReceiverInfo {
   final Node receiver;
-  final InterfaceType type;
-  final ClassWorld world;
+  final boolish hasNoSuchMethod;
+  final boolish isNull = boolish.maybe;
 
-  TrustTypesReceiverInfo(this.receiver, this.type, this.world);
-  // TODO: determine if [receiver] may implement noSuchMethod
-  boolish get hasNoSuchMethod => boolish.maybe;
-  boolish get isNull => boolish.maybe;
+  factory TrustTypesReceiverInfo(
+      Node receiver, InterfaceType type, ClassWorld world) {
+    boolish hasNoSuchMethod;
+    if (type != null) {
+      bool someNSM = false;
+      bool allNSM = true;
+      for (var cls in world.subclassesOf(type.element)) {
+        var member = cls.lookupMember('noSuchMethod');
+        if (member != null && !member.isAbstract) {
+          someNSM = true;
+        } else {
+          allNSM = false;
+        }
+      }
+      hasNoSuchMethod = 
+          someNSM ? (allNSM ? boolish.yes : boolish.maybe) : boolish.no;
+    } else {
+      hasNoSuchMethod = boolish.maybe;
+    }
+    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod);
+  }
+
+  TrustTypesReceiverInfo._(this.receiver, this.hasNoSuchMethod);
 }
 
 class TrustTypesSelectorInfo implements SelectorInfo {
@@ -142,7 +161,8 @@ class TrustTypesSelectorInfo implements SelectorInfo {
   factory TrustTypesSelectorInfo(Node receiver, InterfaceType type,
       Selector selector, ClassWorld world) {
     boolish exists;
-    boolish usesInterceptor = boolish.no; // TODO;
+    // TODO(sigmund): specify which selectors on what types need an interceptor
+    boolish usesInterceptor = boolish.no;
     int count = 0;
     bool isAccurate = true;
 
@@ -169,6 +189,7 @@ class TrustTypesSelectorInfo implements SelectorInfo {
       } else {
         isAccurate = false;
         exists = boolish.maybe;
+        usesInterceptor = boolish.maybe;
       }
     }
     return new TrustTypesSelectorInfo._(receiver, selector, exists,
@@ -180,17 +201,3 @@ class TrustTypesSelectorInfo implements SelectorInfo {
 }
 
 
-
-/// An [AnalysisResult] produced by using type-propagation based on
-/// trusted type annotations.
-class TrustTypesAnalysisResult implements AnalysisResult {
-  final ClassWorld world;
-  final TreeElements elements;
-
-  TrustTypesAnalysisResult(this.elements, this.world);
-
-  ReceiverInfo infoForReceiver(Node receiver) => 
-    new TrustTypesReceiverInfo(receiver, elements.typesCache[receiver], world);
-  SelectorInfo infoForSelector(Node receiver, Selector selector) =>
-    new TrustTypesSelectorInfo(receiver, elements.typesCache[receiver], selector, world);
-}
