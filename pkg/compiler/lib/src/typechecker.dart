@@ -1122,7 +1122,7 @@ class TypeCheckerVisitor extends Visitor<DartType> {
         executableContext != null &&
         !executableContext.library.isPlatformLibrary && !type.isDynamic) {
       if (!_reported) {
-        print('> computeAnalysisStatis is on - caching types of expressions');
+        print('> computeAnalysisStatus is on - caching types of expressions');
         _reported = true;
       }
       elements.typesCache[node] = type;

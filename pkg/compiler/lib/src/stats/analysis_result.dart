@@ -123,18 +123,20 @@ class TrustTypesAnalysisResult implements AnalysisResult {
 class TrustTypesReceiverInfo implements ReceiverInfo {
   final Node receiver;
   final boolish hasNoSuchMethod;
+  final int possibleNsmTargets;
   final boolish isNull = boolish.maybe;
 
   factory TrustTypesReceiverInfo(
       Node receiver, InterfaceType type, ClassWorld world) {
     boolish hasNoSuchMethod;
+    int nsm = -1;
     if (type != null) {
       int classes = 0;
-      int nsm = 0;
+      nsm = 0;
       for (var cls in world.subclassesOf(type.element)) {
         var member = cls.lookupMember('noSuchMethod');
         classes++;
-        if (member != null && !member.isAbstract) nsm++;
+        if (!member.enclosingClass.isObject) nsm++;
       }
       // TODO(sigmund):
       // - need to be more precise about which classes have nSM
@@ -143,13 +145,15 @@ class TrustTypesReceiverInfo implements ReceiverInfo {
       hasNoSuchMethod = (nsm == 0)
           ? boolish.no
           : (nsm == classes ? boolish.yes : boolish.maybe);
+
     } else {
       hasNoSuchMethod = boolish.maybe;
     }
-    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod);
+    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod, nsm);
   }
 
-  TrustTypesReceiverInfo._(this.receiver, this.hasNoSuchMethod);
+  TrustTypesReceiverInfo._(this.receiver, this.hasNoSuchMethod,
+      this.possibleNsmTargets);
 }
 
 class TrustTypesSelectorInfo implements SelectorInfo {

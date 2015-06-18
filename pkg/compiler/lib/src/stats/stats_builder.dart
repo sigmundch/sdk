@@ -331,11 +331,11 @@ class _StatsVisitor<T> extends Visitor<T>
       if (hasNsm == boolish.no) {
         handleNSMError();
       } else if (hasNsm == boolish.yes) {
-        //if (receiverInfo.possibleNumberOfNSM == 1) {
-        //  handleNSMSingle();
-        //} else {
+        if (receiverInfo.possibleNsmTargets == 1) {
+          handleNSMSingle();
+        } else {
           handleNSMAny();
-        //}
+        }
       } else {
         handleDynamic();
       }

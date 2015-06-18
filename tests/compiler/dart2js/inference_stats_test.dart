@@ -133,7 +133,6 @@ main() {
 
   group('noSuchMethod', () {
     test('error will be thrown', () {
-      /// no-such-method interaction
       return _check('''
         class A {
         }
@@ -144,8 +143,7 @@ main() {
         nsmErrorSend: 1);   // f not there, A has no nSM
     });
 
-    test('nSM will be called', () {
-      /// no-such-method interaction
+    test('nSM will be called - one option', () {
       return _check('''
         class A {
           noSuchMethod(i) => null;
@@ -153,8 +151,41 @@ main() {
         main() { test(); }
         test() { new A().f; }
         ''',
-        constructorSend: 1, // new B()
-        singleNsmCallSend: 1);   // f not there, A has nSM
+        constructorSend: 1,    // new B()
+        singleNsmCallSend: 1); // f not there, A has nSM
+    });
+
+    // TODO(sigmund): is it worth splitting multiNSMvirtual?
+    test('nSM will be called - multiple options', () {
+      return _check('''
+        class A {
+          noSuchMethod(i) => null;
+        }
+        class B extends A {
+          noSuchMethod(i) => null;
+        }
+        main() { new A(); test(); }
+        test() { A x = new B(); x.f; }
+        ''',
+        constructorSend: 1,   // new B()
+        localSend: 1,         // x in x.f
+        multiNsmCallSend: 1); // f not there, A has nSM
+    });
+
+    test('nSM will be called - multiple options', () {
+      return _check('''
+        class A {
+          noSuchMethod(i) => null;
+        }
+        class B extends A {
+          get f => null;
+        }
+        main() { new A(); test(); }
+        test() { A x = new B(); x.f; }
+        ''',
+        constructorSend: 1,   // new B()
+        localSend: 1,         // x in x.f
+        dynamicSend: 1);      // f not known to be there there, A has nSM
     });
   });
 }
