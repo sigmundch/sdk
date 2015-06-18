@@ -114,7 +114,7 @@ main() {
         virtualSend: 1);    // x.f may be A.f or B.f (types alone is not enough)
     });
 
-    test('polymorphic-dynamic: type annotations don\'t help', () {
+    test("polymorphic-dynamic: type annotations don't help", () {
       return _check('''
         class A {
           get f => 1;
@@ -170,6 +170,23 @@ main() {
         constructorSend: 1,   // new B()
         localSend: 1,         // x in x.f
         multiNsmCallSend: 1); // f not there, A has nSM
+    });
+
+    // TODO(sigmund): is it worth splitting multiNSMvirtual?
+    test('nSM will be called - multiple options', () {
+      return _check('''
+        class A {
+          noSuchMethod(i) => null;
+        }
+        class B extends A {
+          // don't count A's nsm as distinct
+        }
+        main() { new A(); test(); }
+        test() { A x = new B(); x.f; }
+        ''',
+        constructorSend: 1,    // new B()
+        localSend: 1,          // x in x.f
+        singleNsmCallSend: 1); // f not there, A has nSM
     });
 
     test('nSM will be called - multiple options', () {

@@ -129,27 +129,28 @@ class TrustTypesReceiverInfo implements ReceiverInfo {
   factory TrustTypesReceiverInfo(
       Node receiver, InterfaceType type, ClassWorld world) {
     boolish hasNoSuchMethod;
-    int nsm = -1;
+    int possibleNsmTargets = -1;
     if (type != null) {
-      int classes = 0;
-      nsm = 0;
-      for (var cls in world.subclassesOf(type.element)) {
+      bool nsmNotFound = false;
+      var uniqueNsm = new Set();
+      for (var cls in world.subtypesOf(type.element)) {
         var member = cls.lookupMember('noSuchMethod');
-        classes++;
-        if (!member.enclosingClass.isObject) nsm++;
+        if (!member.enclosingClass.isObject) {
+          uniqueNsm.add(member);
+        } else {
+          nsmNotFound = true;
+        }
       }
-      // TODO(sigmund):
-      // - need to be more precise about which classes have nSM
-      // - need to save the count of nsm, in case this can be a monomorphic nSM
-      // call.
-      hasNoSuchMethod = (nsm == 0)
-          ? boolish.no
-          : (nsm == classes ? boolish.yes : boolish.maybe);
+      hasNoSuchMethod = uniqueNsm.length > 0
+          ? (nsmNotFound ? boolish.maybe : boolish.yes)
+          : boolish.no;
+      possibleNsmTargets = uniqueNsm.length;
 
     } else {
       hasNoSuchMethod = boolish.maybe;
     }
-    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod, nsm);
+    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod,
+        possibleNsmTargets);
   }
 
   TrustTypesReceiverInfo._(this.receiver, this.hasNoSuchMethod,
@@ -181,7 +182,7 @@ class TrustTypesSelectorInfo implements SelectorInfo {
     } else {
       bool allLiveClassesImplementSelector = true;
       var cls = type.element;
-      for (var child in world.subclassesOf(cls)) {
+      for (var child in world.subtypesOf(cls)) {
         var member = child.lookupMember(selector.name);
         if (member != null && !member.isAbstract) {
           count++;
