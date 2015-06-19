@@ -42,7 +42,7 @@ class StatsBuilderTask extends CompilerTask {
       // TODO(sigmund): emit a file instead, do visualization as a separate
       // process.
       if (const bool.fromEnvironment('print_stats')) {
-        print(formatAsTable(visitor.resultbb));
+        print(formatAsTable(visitor.result));
       }
     });
   }
@@ -278,27 +278,7 @@ class _StatsVisitor<T> extends Visitor<T>
 
   // Dynamic sends
 
-  void visitBinary(
-      Send node, Node left, BinaryOperator operator, Node right, T arg) {
-    handleDynamic();
-  }
-
-  void visitCompoundIndexSet(SendSet node, Node receiver, Node index,
-      AssignmentOperator operator, Node rhs, T arg) {
-    handleDynamic(); // t1 = receiver[index]
-    handleDynamic(); // t2 = t1 op rhs
-    handleDynamic(); // receiver[index] = t2
-  }
-
-  void visitDynamicPropertyCompound(Send node, Node receiver,
-      AssignmentOperator operator, Node rhs, Selector getterSelector,
-      Selector setterSelector, T arg) {
-    handleDynamic();
-    handleDynamic();
-    handleDynamic();
-  }
-
-  handleDynamicProperty(Node receiver, Selector selector) {
+  void handleDynamicProperty(Node receiver, Selector selector) {
     // staticSend: no (automatically)
     // superSend: no (automatically)
     // localSend: no (automatically)
@@ -345,7 +325,6 @@ class _StatsVisitor<T> extends Visitor<T>
     }
 
     boolish usesInterceptor = selectorInfo.usesInterceptor;
-    int possibleTargets = selectorInfo.possibleTargets;
     if (hasSelector == boolish.yes) {
       if (selectorInfo.isAccurate && selectorInfo.possibleTargets == 1) {
         assert (usesInterceptor != boolish.maybe);
@@ -368,6 +347,32 @@ class _StatsVisitor<T> extends Visitor<T>
     handleDynamic();
   }
 
+  // TODO(sigmund): many many things to add:
+  // -- support for operators, indexers, etc.
+  // -- consider null in hndleDynamicProperty (but not on the ?. operators)
+  // -- interceptors!
+
+  void visitBinary(
+      Send node, Node left, BinaryOperator operator, Node right, T arg) {
+    handleDynamic();
+  }
+
+  void visitCompoundIndexSet(SendSet node, Node receiver, Node index,
+      AssignmentOperator operator, Node rhs, T arg) {
+    handleDynamic(); // t1 = receiver[index]
+    handleDynamic(); // t2 = t1 op rhs
+    handleDynamic(); // receiver[index] = t2
+  }
+
+  void visitDynamicPropertyCompound(Send node, Node receiver,
+      AssignmentOperator operator, Node rhs, Selector getterSelector,
+      Selector setterSelector, T arg) {
+    handleDynamicProperty(receiver, getterSelector);
+    handleDynamic();
+    handleDynamicProperty(receiver, setterSelector);
+  }
+
+
   void visitDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
     handleDynamicProperty(receiver, selector);
@@ -381,17 +386,17 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitDynamicPropertyPostfix(Send node, Node receiver,
       IncDecOperator operator, Selector getterSelector, Selector setterSelector,
       T arg) {
-    handleDynamic();
-    handleDynamic();
-    handleDynamic();
+    handleDynamicProperty(receiver, getterSelector);
+    handleDynamic(); // TODO(sigmund): handle operator
+    handleDynamicProperty(receiver, setterSelector);
   }
 
   void visitDynamicPropertyPrefix(Send node, Node receiver,
       IncDecOperator operator, Selector getterSelector, Selector setterSelector,
       T arg) {
+    handleDynamicProperty(receiver, getterSelector);
     handleDynamic();
-    handleDynamic();
-    handleDynamic();
+    handleDynamicProperty(receiver, setterSelector);
   }
 
   void visitDynamicPropertySet(
@@ -411,27 +416,27 @@ class _StatsVisitor<T> extends Visitor<T>
   void visitIfNotNullDynamicPropertyCompound(Send node, Node receiver,
       AssignmentOperator operator, Node rhs, Selector getterSelector,
       Selector setterSelector, T arg) {
+    handleDynamicProperty(receiver, getterSelector);
     handleDynamic();
-    handleDynamic();
-    handleDynamic();
+    handleDynamicProperty(receiver, setterSelector);
   }
 
   void visitIfNotNullDynamicPropertyGet(
       Send node, Node receiver, Selector selector, T arg) {
-    handleDynamic();
+    handleDynamicProperty(receiver, selector);
   }
 
   void visitIfNotNullDynamicPropertyInvoke(
       Send node, Node receiver, NodeList arguments, Selector selector, T arg) {
-    handleDynamic();
+    handleDynamicProperty(receiver, selector);
   }
 
   void visitIfNotNullDynamicPropertyPostfix(Send node, Node receiver,
       IncDecOperator operator, Selector getterSelector, Selector setterSelector,
       T arg) {
+    handleDynamicProperty(receiver, getterSelector);
     handleDynamic();
-    handleDynamic();
-    handleDynamic();
+    handleDynamicProperty(receiver, setterSelector);
   }
 
   void visitIfNotNullDynamicPropertyPrefix(Send node, Node receiver,
