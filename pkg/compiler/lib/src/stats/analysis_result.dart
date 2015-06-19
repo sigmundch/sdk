@@ -117,7 +117,42 @@ class TrustTypesAnalysisResult implements AnalysisResult {
   ReceiverInfo infoForReceiver(Node receiver) =>
     new TrustTypesReceiverInfo(receiver, elements.typesCache[receiver], world);
   SelectorInfo infoForSelector(Node receiver, Selector selector) =>
-    new TrustTypesSelectorInfo(receiver, elements.typesCache[receiver], selector, world);
+    new TrustTypesSelectorInfo(
+        receiver, elements.typesCache[receiver], selector, world);
+}
+
+class _SelectorLookupResult {
+  final boolish exists;
+  // TODO(sigmund): implement
+  final boolish usesInterceptor = boolish.no;
+  final int possibleTargets;
+
+  _SelectorLookupResult(this.exists, this.possibleTargets);
+
+  const _SelectorLookupResult.dontKnow()
+    : exists = boolish.maybe, possibleTargets = -1;
+}
+
+_SelectorLookupResult _lookupSelector(
+    String selectorName, InterfaceType type, ClassWorld world) {
+  if (type == null) return const _SelectorLookupResult.dontKnow();
+  bool isNsm = selectorName == 'noSuchMethod';
+  bool notFound = false;
+  var uniqueTargets = new Set();
+  for (var cls in world.subtypesOf(type.element)) {
+    var member = cls.lookupMember(selectorName);
+    if (member != null && !member.isAbstract
+        // Don't match nsm in Object
+        && (!isNsm || !member.enclosingClass.isObject)) {
+      uniqueTargets.add(member);
+    } else {
+      notFound = true;
+    }
+  }
+  boolish exists = uniqueTargets.length > 0
+        ? (notFound ? boolish.maybe : boolish.yes)
+        : boolish.no;
+  return new _SelectorLookupResult(exists, uniqueTargets.length);
 }
 
 class TrustTypesReceiverInfo implements ReceiverInfo {
@@ -128,29 +163,10 @@ class TrustTypesReceiverInfo implements ReceiverInfo {
 
   factory TrustTypesReceiverInfo(
       Node receiver, InterfaceType type, ClassWorld world) {
-    boolish hasNoSuchMethod;
-    int possibleNsmTargets = -1;
-    if (type != null) {
-      bool nsmNotFound = false;
-      var uniqueNsm = new Set();
-      for (var cls in world.subtypesOf(type.element)) {
-        var member = cls.lookupMember('noSuchMethod');
-        if (!member.enclosingClass.isObject) {
-          uniqueNsm.add(member);
-        } else {
-          nsmNotFound = true;
-        }
-      }
-      hasNoSuchMethod = uniqueNsm.length > 0
-          ? (nsmNotFound ? boolish.maybe : boolish.yes)
-          : boolish.no;
-      possibleNsmTargets = uniqueNsm.length;
-
-    } else {
-      hasNoSuchMethod = boolish.maybe;
-    }
-    return new TrustTypesReceiverInfo._(receiver, hasNoSuchMethod,
-        possibleNsmTargets);
+    // TODO(sigmund): refactor, maybe just store nsm as a SelectorInfo
+    var res = _lookupSelector('noSuchMethod', type, world);
+    return new TrustTypesReceiverInfo._(receiver,
+        res.exists, res.possibleTargets);
   }
 
   TrustTypesReceiverInfo._(this.receiver, this.hasNoSuchMethod,
@@ -168,40 +184,11 @@ class TrustTypesSelectorInfo implements SelectorInfo {
 
   factory TrustTypesSelectorInfo(Node receiver, InterfaceType type,
       Selector selector, ClassWorld world) {
-    boolish exists;
-    // TODO(sigmund): specify which selectors on what types need an interceptor
-    boolish usesInterceptor = boolish.no;
-    int count = 0;
-    bool isAccurate = true;
-
-    if (type == null) {
-      exists = boolish.maybe;
-      usesInterceptor = boolish.maybe;
-      count = -1;
-      isAccurate = false;
-    } else {
-      bool allLiveClassesImplementSelector = true;
-      var cls = type.element;
-      for (var child in world.subtypesOf(cls)) {
-        var member = child.lookupMember(selector.name);
-        if (member != null && !member.isAbstract) {
-          count++;
-        } else {
-          allLiveClassesImplementSelector = false;
-        }
-      }
-      if (count == 0) {
-        exists = boolish.no;
-      } else if (allLiveClassesImplementSelector) {
-        exists = boolish.yes;
-      } else {
-        isAccurate = false;
-        exists = boolish.maybe;
-        usesInterceptor = boolish.maybe;
-      }
-    }
-    return new TrustTypesSelectorInfo._(receiver, selector, exists,
-        usesInterceptor, count, isAccurate);
+    var res = _lookupSelector(
+        selector != null ? selector.name : null, type, world);
+    return new TrustTypesSelectorInfo._(receiver, selector, res.exists,
+        res.usesInterceptor, res.possibleTargets,
+        res.exists != boolish.maybe);
   }
   TrustTypesSelectorInfo._(
       this.receiver, this.selector, this.exists, this.usesInterceptor,

@@ -41,7 +41,9 @@ class StatsBuilderTask extends CompilerTask {
       resultForTesting = visitor.result;
       // TODO(sigmund): emit a file instead, do visualization as a separate
       // process.
-      if (const bool.fromEnvironment('print_stats')) print(formatAsTable(visitor.result));
+      if (const bool.fromEnvironment('print_stats')) {
+        print(formatAsTable(visitor.resultbb));
+      }
     });
   }
 }
@@ -1850,8 +1852,8 @@ class _StatsVisitor<T> extends Visitor<T>
     if (!measurements.checkInvariant(Metric.send) ||
         !measurements.checkInvariant(Metric.monomorphicSend) ||
         !measurements.checkInvariant(Metric.polymorphicSend)) {
-      compiler.reportError(
-          node, MessageKind.GENERIC, {'text': 'bad\n-- $msg\nlast:\n-- $last\n'});
+      compiler.reportError(node,
+          MessageKind.GENERIC, {'text': 'bad\n-- $msg\nlast:\n-- $last\n'});
       last = msg;
     } else {
       last = msg;
