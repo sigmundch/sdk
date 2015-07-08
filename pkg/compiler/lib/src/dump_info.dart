@@ -20,172 +20,93 @@ import 'dart2jslib.dart' show
     MessageKind;
 import 'types/types.dart' show TypeMask;
 import 'deferred_load.dart' show OutputUnit;
+import 'info/info.dart';
 import 'js_backend/js_backend.dart' show JavaScriptBackend;
 import 'js_emitter/full_emitter/emitter.dart' as full show Emitter;
 import 'js/js.dart' as jsAst;
 import 'universe/universe.dart' show Selector, UniverseSelector;
 import 'util/util.dart' show NO_LOCATION_SPANNABLE;
 
-/// Maps objects to an id.  Supports lookups in
-/// both directions.
-class IdMapper<T>{
-  Map<int, T> _idToElement = {};
-  Map<T, int> _elementToId = {};
-  int _idCounter = 0;
-  final String name;
-
-  IdMapper(this.name);
-
-  Iterable<T> get elements => _elementToId.keys;
-
-  String add(T e) {
-    if (_elementToId.containsKey(e)) {
-      return name + "/${_elementToId[e]}";
-    }
-
-    _idToElement[_idCounter] = e;
-    _elementToId[e] = _idCounter;
-    _idCounter += 1;
-    return name + "/${_idCounter - 1}";
-  }
-}
-
-class GroupedIdMapper {
-  // Mappers for specific kinds of elements.
-  IdMapper<LibraryElement> _library = new IdMapper('library');
-  IdMapper<TypedefElement> _typedef = new IdMapper('typedef');
-  IdMapper<FieldElement> _field = new IdMapper('field');
-  IdMapper<ClassElement> _class = new IdMapper('class');
-  IdMapper<FunctionElement> _function = new IdMapper('function');
-  IdMapper<OutputUnit> _outputUnit = new IdMapper('outputUnit');
-
-  Iterable<Element> get functions => _function.elements;
-
-  // Convert this database of elements into JSON for rendering
-  Map<String, dynamic> _toJson(ElementToJsonVisitor elementToJson) {
-    Map<String, dynamic> json = {};
-    var m = [_library, _typedef, _field, _class, _function];
-    for (IdMapper mapper in m) {
-      Map<String, dynamic> innerMapper = {};
-      mapper._idToElement.forEach((k, v) {
-        // All these elements are already cached in the
-        // jsonCache, so this is just an access.
-        var elementJson = elementToJson.process(v);
-        if (elementJson != null) {
-          innerMapper["$k"] = elementJson;
-        }
-      });
-      json[mapper.name] = innerMapper;
-    }
-    return json;
-  }
-}
-
-class ElementToJsonVisitor
-    extends BaseElementVisitor<Map<String, dynamic>, dynamic> {
-  final GroupedIdMapper mapper = new GroupedIdMapper();
+class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
   final Compiler compiler;
 
-  final Map<Element, Map<String, dynamic>> jsonCache = {};
+  final AllInfo result = new AllInfo();
+  final Map<Element, Info> _elementToInfo = {};
+  final Map<OutputUnit, OutputUnitInfo> _outputToInfo = {};
 
-  String dart2jsVersion;
+  ElementInfoCollector(this.compiler);
 
-  ElementToJsonVisitor(this.compiler);
+  void run() => compiler.libraryLoader.libraries.forEach(visit);
 
-  void run() {
-    dart2jsVersion = compiler.hasBuildId ? compiler.buildId : null;
+  Info visit(Element e, [_]) => e.accept(this, null);
 
-    for (LibraryElement library in compiler.libraryLoader.libraries.toList()) {
-      visit(library);
-    }
-  }
-
-  Map<String, dynamic> visit(Element e, [_]) => e.accept(this, null);
-
-  // If keeping the element is in question (like if a function has a size
-  // of zero), only keep it if it holds dependencies to elsewhere.
+  /// Whether to emit information about [element].
+  ///
+  /// By default we emit information for any element that contributes to the
+  /// output size. Either becuase the it is a function being emitted or inlined,
+  /// or because it is an element that holds dependencies to other elements.
   bool shouldKeep(Element element) {
     return compiler.dumpInfoTask.selectorsFromElement.containsKey(element)
         || compiler.dumpInfoTask.inlineCount.containsKey(element);
   }
 
-  Map<String, dynamic> toJson() {
-    return mapper._toJson(this);
+  // Memoization of the JSON creating process.
+  // TODO(sigmund): with a proper visit order, we shouldn't need to treat it as
+  // memoization...
+  Info process(Element element) {
+    return _elementToInfo.putIfAbsent(element, () => visit(element));
   }
 
-  // Memoization of the JSON creating process.
-  Map<String, dynamic> process(Element element) {
-    return jsonCache.putIfAbsent(element, () => visit(element));
+  void _record(Element element, Info info, List list) {
+    _elementToInfo[element] = info;
+    list.add(info);
   }
 
   // Returns the id of an [element] if it has already been processed.
   // If the element has not been processed, this function does not
   // process it, and simply returns null instead.
-  String idOf(Element element) {
-    if (jsonCache.containsKey(element) && jsonCache[element] != null) {
-      return jsonCache[element]['id'];
-    } else {
-      return null;
-    }
-  }
+  String idOf(Element element) => _elementToInfo[element]?.id;
 
-  Map<String, dynamic> visitElement(Element element, _) {
-    return null;
-  }
+  Info visitElement(Element element, _) => null;
 
-  Map<String, dynamic> visitConstructorBodyElement(
-      ConstructorBodyElement e, _) {
+  FunctionInfo visitConstructorBodyElement(ConstructorBodyElement e, _) {
     return visitFunctionElement(e.constructor, _);
   }
 
-  Map<String, dynamic> visitLibraryElement(LibraryElement element, _) {
-    var id = mapper._library.add(element);
-    List<String> children = <String>[];
-
+  LibraryInfo visitLibraryElement(LibraryElement element, _) {
     String libname = element.getLibraryName();
     libname = libname == "" ? "<unnamed>" : libname;
-
     int size = compiler.dumpInfoTask.sizeOf(element);
+    var info = new LibraryInfo(libname, element.canonicalUri, null, size);
 
-    LibraryElement contentsOfLibrary = element.isPatched
-      ? element.patch : element;
-    contentsOfLibrary.forEachLocalMember((Element member) {
-      Map<String, dynamic> childJson = this.process(member);
-      if (childJson == null) return;
-      children.add(childJson['id']);
+    LibraryElement realElement = element.isPatched ? element.patch : element;
+    realElement.forEachLocalMember((Element member) {
+      Info child = this.process(member);
+      if (child is ClassInfo) {
+        info.classes.add(child);
+      } else if (child is FunctionInfo) {
+        info.topLevelFunctions.add(child);
+      } else if (child is FieldInfo) {
+        info.topLevelVariables.add(child);
+      } else if (child != null) {
+        print('unexpected child of $info: $child ==> ${child.runtimeType}');
+        assert(false);
+      }
     });
 
-    if (children.length == 0 && !shouldKeep(element)) {
-      return null;
-    }
-
-    return {
-      'kind': 'library',
-      'name': libname,
-      'size': size,
-      'id': id,
-      'children': children,
-      'canonicalUri': element.canonicalUri.toString()
-    };
+    if (info.isEmpty && !shouldKeep(element)) return null;
+    _record(element, info, result.libraries);
+    return info;
   }
 
-  Map<String, dynamic> visitTypedefElement(TypedefElement element, _) {
-    String id = mapper._typedef.add(element);
-    return element.alias == null
-      ? null
-      : {
-        'id': id,
-        'type': element.alias.toString(),
-        'kind': 'typedef',
-        'name': element.name
-      };
+  TypedefInfo visitTypedefElement(TypedefElement element, _) {
+    if (element.alias == null) return null;
+    var info = new TypedefInfo(element.name, '${element.alias}');
+    _record(element, info, result.typedefs);
+    return info;
   }
 
-  Map<String, dynamic> visitFieldElement(FieldElement element, _) {
-    String id = mapper._field.add(element);
-    List<String> children = [];
-    StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
-
+  FieldInfo visitFieldElement(FieldElement element, _) {
     TypeMask inferredType =
         compiler.typesTask.getGuaranteedTypeOfElement(element);
     // If a field has an empty inferred type it is never used.
@@ -195,196 +116,181 @@ class ElementToJsonVisitor
 
     int size = compiler.dumpInfoTask.sizeOf(element);
     String code;
-
+    StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
     if (emittedCode != null) {
       size += emittedCode.length;
       code = emittedCode.toString();
     }
 
+    var nestedClosures = <FunctionInfo>[];
     for (Element closure in element.nestedClosures) {
-      var childJson = this.process(closure);
-      if (childJson != null) {
-        children.add(childJson['id']);
-        if (childJson.containsKey('size')) {
-          size += childJson['size'];
-        }
+      var child = this.process(closure);
+      if (child != null) {
+        nestedClosures.add(child);
+        size += child.size;
       }
     }
 
-    OutputUnit outputUnit =
-        compiler.deferredLoadTask.outputUnitForElement(element);
-
-    return {
-      'id': id,
-      'kind': 'field',
-      'type': element.type.toString(),
-      'inferredType': inferredType.toString(),
-      'name': element.name,
-      'children': children,
-      'size': size,
-      'code': code,
-      'outputUnit': mapper._outputUnit.add(outputUnit)
-    };
+    FieldInfo field = new FieldInfo(
+      name: element.name,
+      type: '${element.type}',
+      inferredType: '$inferredType',
+      closures: nestedClosures,
+      size: size,
+      code: code,
+      outputUnit: _unitInfoForElement(element));
+    _record(element, field, result.fields);
+    return field;
   }
 
-  Map<String, dynamic> visitClassElement(ClassElement element, _) {
-    String id = mapper._class.add(element);
-    List<String> children = [];
+  ClassInfo visitClassElement(ClassElement element, _) {
+    ClassInfo classInfo = new ClassInfo(
+        name: element.name,
+        isAbstract: element.isAbstract,
+        outputUnit: _unitInfoForElement(element));
+    _elementToInfo[element] = classInfo;
 
     int size = compiler.dumpInfoTask.sizeOf(element);
-    JavaScriptBackend backend = compiler.backend;
-
-    Map<String, dynamic> modifiers = { 'abstract': element.isAbstract };
-
     element.forEachLocalMember((Element member) {
-      Map<String, dynamic> childJson = this.process(member);
-      if (childJson != null) {
-        children.add(childJson['id']);
+      Info info = this.process(member);
+      if (info == null) return;
+      if (info is FieldInfo) {
+        classInfo.fields.add(info);
+      } else {
+        assert(info is FunctionInfo);
+        classInfo.functions.add(info);
+      }
 
-        // Closures are placed in the library namespace, but
-        // we want to attribute them to a function, and by
-        // extension, this class.  Process and add the sizes
-        // here.
-        if (member is MemberElement) {
-          for (Element closure in member.nestedClosures) {
-            Map<String, dynamic> child = this.process(closure);
+      // Closures are placed in the library namespace, but we want to attribute
+      // them to a function, and by extension, this class.  Process and add the
+      // sizes here.
+      if (member is MemberElement) {
+        for (Element closure in member.nestedClosures) {
+          FunctionInfo closureInfo = this.process(closure);
+          if (closureInfo == null) continue;
 
-            // Look for the parent element of this closure which should
-            // be a class.  If it exists, set the display name to
-            // the name of the class + the name of the closure function.
-            Element parent = closure.enclosingElement;
-            Map<String, dynamic> processedParent = this.process(parent);
-            if (processedParent != null) {
-              child['name'] = "${processedParent['name']}.${child['name']}";
-            }
-
-            if (child != null) {
-              size += child['size'];
-            }
+          // TODO(sigmund): remove this legacy update on the name, represent the
+          // information explicitly in the info format.
+          // Look for the parent element of this closure might be the enclosing
+          // class or an enclosing function.
+          Element parent = closure.enclosingElement;
+          ClassInfo parentInfo = this.process(parent);
+          if (parentInfo != null) {
+            closureInfo.name = "${parentInfo.name}.${closureInfo.name}";
           }
+          size += closureInfo.size;
         }
       }
     });
 
+    classInfo.size = size;
+
     // Omit element if it is not needed.
-    if (!backend.emitter.neededClasses.contains(element) &&
-        children.length == 0) {
+    if (!compiler.backend.emitter.neededClasses.contains(element) &&
+        classInfo.fields.isEmpty && classInfo.functions.isEmpty) {
       return null;
     }
-
-    OutputUnit outputUnit =
-        compiler.deferredLoadTask.outputUnitForElement(element);
-
-    return {
-      'name': element.name,
-      'size': size,
-      'kind': 'class',
-      'modifiers': modifiers,
-      'children': children,
-      'id': id,
-      'outputUnit': mapper._outputUnit.add(outputUnit)
-    };
+    _record(element, classInfo, result.classes);
+    return classInfo;
   }
 
-  Map<String, dynamic> visitFunctionElement(FunctionElement element, _) {
-    String id = mapper._function.add(element);
-    String name = element.name;
-    String kind = "function";
-    List<String> children = [];
-    List<Map<String, dynamic>> parameters = [];
-    String inferredReturnType = null;
-    String returnType = null;
-    String sideEffects = null;
-
-    StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
+  FunctionInfo visitFunctionElement(FunctionElement element, _) {
     int size = compiler.dumpInfoTask.sizeOf(element);
+    if (size == 0 && !shouldKeep(element)) return null;
 
-    Map<String, dynamic> modifiers = {
-      'static': element.isStatic,
-      'const': element.isConst,
-      'factory': element.isFactoryConstructor,
-      'external': element.isPatched
-    };
-
+    String name = element.name;
+    int kind = FunctionInfo.TOP_LEVEL_FUNCTION_KIND;
     var enclosingElement = element.enclosingElement;
     if (enclosingElement.isField ||
         enclosingElement.isFunction ||
         element.isClosure ||
         enclosingElement.isConstructor) {
-      kind = "closure";
+      kind = FunctionInfo.CLOSURE_FUNCTION_KIND;
       name = "<unnamed>";
-    } else if (modifiers['static']) {
-      kind = 'function';
+    } else if (element.isStatic) {
+      kind = FunctionInfo.TOP_LEVEL_FUNCTION_KIND;
     } else if (enclosingElement.isClass) {
-      kind = 'method';
+      kind = FunctionInfo.METHOD_FUNCTION_KIND;
     }
 
     if (element.isConstructor) {
-      name == ""
+      name = name == ""
         ? "${element.enclosingElement.name}"
         : "${element.enclosingElement.name}.${element.name}";
-      kind = "constructor";
+      kind = FunctionInfo.CONSTRUCTOR_FUNCTION_KIND;
     }
 
+    var modifiers = new FunctionModifiers(
+        isStatic: element.isStatic,
+        isConst: element.isConst,
+        isFactory: element.isFactoryConstructor,
+        isExternal: element.isPatched);
+    var emittedCode = compiler.dumpInfoTask.codeOf(element);
+    String code = emittedCode == null ? null : '$emittedCode';
+
+    var parameters = <ParameterInfo>[];
     if (element.hasFunctionSignature) {
       FunctionSignature signature = element.functionSignature;
       signature.forEachParameter((parameter) {
-        parameters.add({
-          'name': parameter.name,
-          'type': '${compiler.typesTask.getGuaranteedTypeOfElement(parameter)}',
-          'declaredType': '${parameter.node.type}'
-        });
+        parameters.add(new ParameterInfo(parameter.name,
+            '${compiler.typesTask.getGuaranteedTypeOfElement(parameter)}',
+            '${parameter.node.type}'));
       });
     }
 
+    String returnType = null;
+    // TODO(sigmund): why all these checks?
     if (element.isInstanceMember && !element.isAbstract &&
         compiler.world.allFunctions.contains(element)) {
       returnType = '${element.type.returnType}';
     }
-    inferredReturnType =
+    String inferredReturnType =
         '${compiler.typesTask.getGuaranteedReturnTypeOfElement(element)}';
-    sideEffects = compiler.world.getSideEffectsOfElement(element).toString();
+    String sideEffects = '${compiler.world.getSideEffectsOfElement(element)}';
 
+    var nestedClosures = <FunctionInfo>[];
     if (element is MemberElement) {
       MemberElement member = element as MemberElement;
       for (Element closure in member.nestedClosures) {
-        Map<String, dynamic> child = this.process(closure);
+        var child = this.process(closure);
         if (child != null) {
-          child['kind'] = 'closure';
-          children.add(child['id']);
-          size += child['size'];
+          nestedClosures.add(child);
+          size += child.size;
         }
       }
     }
 
-    if (size == 0 && !shouldKeep(element)) {
-      return null;
-    }
-
     int inlinedCount = compiler.dumpInfoTask.inlineCount[element];
-    if (inlinedCount == null) {
-      inlinedCount = 0;
-    }
+    if (inlinedCount == null) inlinedCount = 0;
 
-    OutputUnit outputUnit =
-        compiler.deferredLoadTask.outputUnitForElement(element);
+    var info = new FunctionInfo(
+      name: name,
+      modifiers: modifiers,
+      closures: nestedClosures,
+      size: size,
+      returnType: returnType,
+      inferredReturnType: inferredReturnType,
+      parameters: parameters,
+      sideEffects: sideEffects,
+      inlinedCount: inlinedCount,
+      code: code,
+      type: element.type.toString(),
+      outputUnit: _unitInfoForElement(element));
+    _record(element, info, result.functions);
+    return info;
+  }
 
-    return {
-      'kind': kind,
-      'name': name,
-      'id': id,
-      'modifiers': modifiers,
-      'children': children,
-      'size': size,
-      'returnType': returnType,
-      'inferredReturnType': inferredReturnType,
-      'parameters': parameters,
-      'sideEffects': sideEffects,
-      'inlinedCount': inlinedCount,
-      'code': emittedCode == null ? null : '$emittedCode',
-      'type': element.type.toString(),
-      'outputUnit': mapper._outputUnit.add(outputUnit)
-    };
+  OutputUnitInfo _unitInfoForElement(Element element) {
+    var outputUnit = compiler.deferredLoadTask.outputUnitForElement(element);
+    return _outputToInfo.putIfAbsent(outputUnit, () {
+      // Dump-info currently only works with the full emitter. If another
+      // emitter is used it will fail here.
+      full.Emitter emitter = compiler.backend.emitter.emitter;
+      var info = new OutputUnitInfo(outputUnit.name,
+          emitter.outputBuffers[outputUnit].length);
+      result.outputUnits.add(info);
+      return info;
+    });
   }
 }
 
@@ -400,7 +306,7 @@ class DumpInfoTask extends CompilerTask {
 
   String get name => "Dump Info";
 
-  ElementToJsonVisitor infoCollector;
+  ElementInfoCollector infoCollector;
 
   /// The size of the generated output.
   int _programSize;
@@ -529,7 +435,7 @@ class DumpInfoTask extends CompilerTask {
   }
 
   void collectInfo() {
-    infoCollector = new ElementToJsonVisitor(compiler)..run();
+    infoCollector = new ElementInfoCollector(compiler)..run();
   }
 
   void dumpInfo() {
@@ -552,93 +458,50 @@ class DumpInfoTask extends CompilerTask {
     Stopwatch stopwatch = new Stopwatch();
     stopwatch.start();
 
-    Map<String, List<Map<String, String>>> holding =
-        <String, List<Map<String, String>>>{};
-    for (Element fn in infoCollector.mapper.functions) {
-      Iterable<Selection> pulling = getRetaining(fn);
+    // Recursively build links to function uses
+    var functionElements = infoCollector._elementToInfo.keys
+      .where((k) => k is FunctionElement);
+    for (var element in functionElements) {
+      var info = infoCollector._elementToInfo[element];
+      Iterable<Selection> uses = getRetaining(element);
       // Don't bother recording an empty list of dependencies.
-      if (pulling.length > 0) {
-        String fnId = infoCollector.idOf(fn);
-        // Some dart2js builtin functions are not
-        // recorded.  Don't register these.
-        if (fnId != null) {
-          holding[fnId] = pulling
-            .map((selection) {
-              return <String, String>{
-                "id": infoCollector.idOf(selection.selectedElement),
-                "mask": selection.mask.toString()
-              };
-            })
-            // Filter non-null ids for the same reason as above.
-            .where((a) => a['id'] != null)
-            .toList();
-        }
+      for (var selection in uses) {
+        // Some dart2js builtin functions are not recorded. Don't register these.
+        var useInfo = infoCollector._elementToInfo[selection.selectedElement];
+        if (useInfo == null) continue;
+        info.uses.add(new DependencyInfo(useInfo, '${selection.mask}'));
       }
     }
+
 
     // Track dependencies that come from inlining.
     for (Element element in inlineMap.keys) {
-      String keyId = infoCollector.idOf(element);
-      if (keyId != null) {
-        for (Element held in inlineMap[element]) {
-          String valueId = infoCollector.idOf(held);
-          if (valueId != null) {
-            holding.putIfAbsent(keyId, () => new List<Map<String, String>>())
-              .add(<String, String>{
-                "id": valueId,
-                "mask": "inlined"
-              });
-          }
-        }
+      var functionInfo = infoCollector._elementToInfo[element];
+      if (functionInfo == null) continue;
+      for (Element held in inlineMap[element]) {
+        var heldInfo = infoCollector._elementToInfo[held];
+        if (heldInfo == null) continue;
+        functionInfo.uses.add(new DependencyInfo(heldInfo, 'inlined'));
       }
     }
 
-    List<Map<String, dynamic>> outputUnits =
-        new List<Map<String, dynamic>>();
-
-    JavaScriptBackend backend = compiler.backend;
-    // Dump-info currently only works with the full emitter. If another
-    // emitter is used it will fail here.
-    full.Emitter fullEmitter = backend.emitter.emitter;
-
-    for (OutputUnit outputUnit in
-        infoCollector.mapper._outputUnit._elementToId.keys) {
-      String id = infoCollector.mapper._outputUnit.add(outputUnit);
-      outputUnits.add(<String, dynamic> {
-        'id': id,
-        'name': outputUnit.name,
-        'size': fullEmitter.outputBuffers[outputUnit].length,
-      });
-    }
-
-    Map<String, dynamic> outJson = {
-      'elements': infoCollector.toJson(),
-      'holding': holding,
-      'outputUnits': outputUnits,
-      'dump_version': 3,
-      'deferredFiles': compiler.deferredLoadTask.computeDeferredMap(),
-      // This increases when new information is added to the map, but the viewer
-      // still is compatible.
-      'dump_minor_version': '2'
-    };
-
-    Map<String, dynamic> generalProgramInfo = <String, dynamic> {
-      'size': _programSize,
-      'dart2jsVersion': infoCollector.dart2jsVersion,
-      'compilationMoment': new DateTime.now().toString(),
-      'compilationDuration': compiler.totalCompileTime.elapsed.toString(),
-      'toJsonDuration': stopwatch.elapsedMilliseconds,
-      'dumpInfoDuration': this.timing.toString(),
-      'noSuchMethodEnabled': backend.enabledNoSuchMethod,
-      'minified': compiler.enableMinification
-    };
-
-    outJson['program'] = generalProgramInfo;
+    var result = infoCollector.result;
+    result.deferredFiles = compiler.deferredLoadTask.computeDeferredMap();
+    stopwatch.stop();
+    result.program = new ProgramInfo(
+        size: _programSize,
+        dart2jsVersion: compiler.hasBuildId ? compiler.buildId : null,
+        compilationMoment: new DateTime.now(),
+        compilationDuration: compiler.totalCompileTime.elapsed,
+        toJsonDuration: stopwatch.elapsedMilliseconds,
+        dumpInfoDuration: this.timing,
+        noSuchMethodEnabled: compiler.backend.enabledNoSuchMethod,
+        minified: compiler.enableMinification);
 
     ChunkedConversionSink<Object> sink =
       encoder.startChunkedConversion(
           new StringConversionSink.fromStringSink(buffer));
-    sink.add(outJson);
+    sink.add(result.toJson());
     compiler.reportInfo(
         NO_LOCATION_SPANNABLE,
         MessageKind.GENERIC,
