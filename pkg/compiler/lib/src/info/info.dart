@@ -25,6 +25,10 @@ abstract class Info {
 }
 
 /// Common information used for most kind of elements.
+// TODO(sigmund): add more:
+//  - inputSize: bytes used in the Dart source program
+//  - transitiveSize: bytes including the size of dependencies that are only
+//    retained because of this element.
 class BasicInfo implements Info {
   final String kind;
   final int id;
@@ -32,12 +36,10 @@ class BasicInfo implements Info {
   /// Bytes used in the generated code for the corresponding element.
   int size;
 
-  // TODO(sigmund): add inputSize (bytes used in the source program))
-
   String get serializedId => '$kind/$id';
 
   // TODO(sigmund): make final (currently not final because we amend the name in
-  // of nested closures to indicate that they are part of a class).
+  // of nested closures to record their enclosing element).
   String name;
 
   /// If using deferred libraries, where the element associated with this info
@@ -47,12 +49,7 @@ class BasicInfo implements Info {
   BasicInfo(this.kind, this.id, this.name, this.outputUnit, [this.size = 0]);
 
   Map toJson() {
-    var res = {
-      'id': serializedId,
-      'kind': kind,
-      'name': name,
-      'size': size,
-    };
+    var res = {'id': serializedId, 'kind': kind, 'name': name, 'size': size};
     // TODO(sigmund): omit this also when outputUnit.id == 0
     // (most code is by default in the main output unit)
     if (outputUnit != null) res['outputUnit'] = outputUnit.serializedId;
@@ -103,6 +100,13 @@ class AllInfo {
   // Note: the dump-info.viewer app was written using a json parser version 3.2.
   final int minorVersion = 3;
 
+  AllInfo();
+
+  factory AllInfo.fromJson(Map map) {
+    // TODO(sigmund): implement
+    throw UnimplementedError('deserialization of dump-info not implemented');
+  }
+
   Map _listAsJsonMap(List<Info> list) {
     var map = <String, Map>{};
     for (var info in list) {
@@ -121,21 +125,21 @@ class AllInfo {
   }
 
   Map toJson() => {
-    'elements': {
-      'library': _listAsJsonMap(libraries),
-      'class': _listAsJsonMap(classes),
-      'function': _listAsJsonMap(functions),
-      'typedef': _listAsJsonMap(typedefs),
-      'field': _listAsJsonMap(fields),
-    },
-    'holding': _extractHoldingInfo(),
-    'outputUnits': outputUnits.map((u) => u.toJson()).toList(),
-    'dump_version': version,
-    'deferredFiles': deferredFiles,
-    'dump_minor_version': '$minorVersion',
-    // TODO(sigmund): change viewer to accept an int?
-    'program': program.toJson(),
-  };
+        'elements': {
+          'library': _listAsJsonMap(libraries),
+          'class': _listAsJsonMap(classes),
+          'function': _listAsJsonMap(functions),
+          'typedef': _listAsJsonMap(typedefs),
+          'field': _listAsJsonMap(fields),
+        },
+        'holding': _extractHoldingInfo(),
+        'outputUnits': outputUnits.map((u) => u.toJson()).toList(),
+        'dump_version': version,
+        'deferredFiles': deferredFiles,
+        'dump_minor_version': '$minorVersion',
+        // TODO(sigmund): change viewer to accept an int?
+        'program': program.toJson(),
+      };
 }
 
 class ProgramInfo {
@@ -149,8 +153,8 @@ class ProgramInfo {
   bool noSuchMethodEnabled;
   bool minified;
 
-  ProgramInfo({
-      this.size,
+  ProgramInfo(
+      {this.size,
       this.dart2jsVersion,
       this.compilationMoment,
       this.compilationDuration,
@@ -160,15 +164,15 @@ class ProgramInfo {
       this.minified});
 
   Map toJson() => {
-    'size': size,
-    'dart2jsVersion': dart2jsVersion,
-    'compilationMoment': '$compilationMoment',
-    'compilationDuration': '${compilationDuration}',
-    'toJsonDuration': toJsonDuration,
-    'dumpInfoDuration': '$dumpInfoDuration',
-    'noSuchMethodEnabled': noSuchMethodEnabled,
-    'minified': minified,
-  };
+        'size': size,
+        'dart2jsVersion': dart2jsVersion,
+        'compilationMoment': '$compilationMoment',
+        'compilationDuration': '${compilationDuration}',
+        'toJsonDuration': toJsonDuration,
+        'dumpInfoDuration': '$dumpInfoDuration',
+        'noSuchMethodEnabled': noSuchMethodEnabled,
+        'minified': minified,
+      };
 }
 
 class LibraryInfo extends BasicInfo {
@@ -179,25 +183,26 @@ class LibraryInfo extends BasicInfo {
 
   static int _id = 0;
 
-  bool get isEmpty => topLevelFunctions.isEmpty
-    && topLevelVariables.isEmpty && classes.isEmpty;
+  bool get isEmpty =>
+      topLevelFunctions.isEmpty && topLevelVariables.isEmpty && classes.isEmpty;
 
   LibraryInfo(String name, this.uri, OutputUnitInfo outputUnit, int size)
       : super('library', _id++, name, outputUnit, size);
 
-  Map toJson() => super.toJson()..addAll({
-    'children': []
+  Map toJson() => super.toJson()
+    ..addAll({
+      'children': []
         ..addAll(topLevelFunctions.map((f) => f.serializedId))
         ..addAll(topLevelVariables.map((v) => v.serializedId))
         ..addAll(classes.map((c) => c.serializedId)),
-    'canonicalUri': '$uri',
-  });
+      'canonicalUri': '$uri',
+    });
 }
 
 class OutputUnitInfo extends BasicInfo {
   static int _ids = 0;
   OutputUnitInfo(String name, int size)
-    : super('outputUnit', _ids++, name, null, size);
+      : super('outputUnit', _ids++, name, null, size);
 }
 
 class ClassInfo extends BasicInfo {
@@ -208,17 +213,18 @@ class ClassInfo extends BasicInfo {
   final List<FieldInfo> fields = [];
   static int _ids = 0;
 
-  ClassInfo({String name, this.isAbstract, OutputUnitInfo outputUnit,
-      int size: 0})
+  ClassInfo(
+      {String name, this.isAbstract, OutputUnitInfo outputUnit, int size: 0})
       : super('class', _ids++, name, outputUnit, size);
 
-  Map toJson() => super.toJson()..addAll({
-    // TODO(sigmund): change format, include only when abstract is true.
-    'modifiers': { 'abstract' : isAbstract },
-    'children': []
+  Map toJson() => super.toJson()
+    ..addAll({
+      // TODO(sigmund): change format, include only when abstract is true.
+      'modifiers': {'abstract': isAbstract},
+      'children': []
         ..addAll(fields.map((f) => f.serializedId))
         ..addAll(functions.map((m) => m.serializedId))
-  });
+    });
 }
 
 class FieldInfo extends BasicInfo {
@@ -228,22 +234,23 @@ class FieldInfo extends BasicInfo {
   String code;
 
   static int _ids = 0;
-  FieldInfo({
-      String name,
+  FieldInfo(
+      {String name,
       int size,
       this.type,
       this.inferredType,
       this.closures,
       this.code,
       OutputUnitInfo outputUnit})
-    : super('field', _ids++, name, outputUnit, size);
+      : super('field', _ids++, name, outputUnit, size);
 
-  Map toJson() => super.toJson()..addAll({
-    'children': closures.map((i) => i.serializedId).toList(),
-    'inferredType': inferredType,
-    'code': code,
-    'type': type,
-  });
+  Map toJson() => super.toJson()
+    ..addAll({
+      'children': closures.map((i) => i.serializedId).toList(),
+      'inferredType': inferredType,
+      'code': code,
+      'type': type,
+    });
 }
 
 class TypedefInfo extends BasicInfo {
@@ -297,8 +304,8 @@ class FunctionInfo extends BasicInfo {
   /// How does this function depend on other functions or fields.
   List<DependencyInfo> uses = [];
 
-  FunctionInfo({
-      String name,
+  FunctionInfo(
+      {String name,
       OutputUnitInfo outputUnit,
       int size,
       this.functionKind,
@@ -311,34 +318,35 @@ class FunctionInfo extends BasicInfo {
       this.sideEffects,
       this.inlinedCount,
       this.code})
-    : super('function', _ids++, name, outputUnit, size);
+      : super('function', _ids++, name, outputUnit, size);
 
-  Map toJson() => super.toJson()..addAll({
-    'children': closures.map((i) => i.serializedId).toList(),
-    'modifiers': modifiers.toJson(),
-    'returnType': returnType,
-    'inferredReturnType': inferredReturnType,
-    'parameters': parameters.map((p) => p.toJson()).toList(),
-    'sideEffects': sideEffects,
-    'inlinedCount': inlinedCount,
-    'code': code,
-    'type': type,
-    // Note: version 3.2 of dump-info serializes `uses` in a section called
-    // `holding` at the top-level.
-  });
+  Map toJson() => super.toJson()
+    ..addAll({
+      'children': closures.map((i) => i.serializedId).toList(),
+      'modifiers': modifiers.toJson(),
+      'returnType': returnType,
+      'inferredReturnType': inferredReturnType,
+      'parameters': parameters.map((p) => p.toJson()).toList(),
+      'sideEffects': sideEffects,
+      'inlinedCount': inlinedCount,
+      'code': code,
+      'type': type,
+      // Note: version 3.2 of dump-info serializes `uses` in a section called
+      // `holding` at the top-level.
+    });
 }
 
-/// Information about how another function is used.
+/// Information about how a dependency is used.
 class DependencyInfo {
+  /// The dependency, either a FunctionInfo or FieldInfo.
   final Info target;
+
+  /// Either a selector mask indicating how this is used, or 'inlined'.
   final String mask;
 
   DependencyInfo(this.target, this.mask);
 
-  Map toJson() => {
-    'id': target.serializedId,
-    'mask': mask,
-  };
+  Map toJson() => {'id': target.serializedId, 'mask': mask};
 }
 
 /// Name and type information about a function parameter.
@@ -349,11 +357,7 @@ class ParameterInfo {
 
   ParameterInfo(this.name, this.type, this.declaredType);
 
-  Map toJson() => {
-    'name': name,
-    'type': type,
-    'declaredType': declaredType,
-  };
+  Map toJson() => {'name': name, 'type': type, 'declaredType': declaredType};
 }
 
 /// Modifiers that may apply to methods.
@@ -363,11 +367,19 @@ class FunctionModifiers {
   final bool isFactory;
   final bool isExternal;
 
-  FunctionModifiers({
-      this.isStatic: false,
+  FunctionModifiers(
+      {this.isStatic: false,
       this.isConst: false,
       this.isFactory: false,
       this.isExternal: false});
+
+  factory FunctionModifiers.fromJson(Map<String, bool> json) {
+    return new FunctionModifiers(
+        isStatic: json['static'] == true,
+        isConst: json['const'] == true,
+        isFactory: json['factory'] == true,
+        isExternal: json['external'] == true);
+  }
 
   // TODO(sigmund): exclude false values (requires bumping the format version):
   //   Map toJson() {
@@ -378,18 +390,10 @@ class FunctionModifiers {
   //     if (isExternal) res['external'] = true;
   //     return res;
   //   }
-  Map toJson() => <String, bool> {
-    'static': isStatic,
-    'const': isConst,
-    'factory': isFactory,
-    'external': isExternal,
-  };
-
-  static FunctionModifiers fromJson(Map<String, bool> json) {
-    return new FunctionModifiers(
-      isStatic: json['static'] == true,
-      isConst: json['const'] == true,
-      isFactory: json['factory'] == true,
-      isExternal: json['external'] == true);
-  }
+  Map toJson() => {
+        'static': isStatic,
+        'const': isConst,
+        'factory': isFactory,
+        'external': isExternal,
+      };
 }

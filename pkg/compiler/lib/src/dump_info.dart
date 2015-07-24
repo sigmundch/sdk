@@ -4,20 +4,13 @@
 
 library dump_info;
 
-import 'dart:convert' show
-    HtmlEscape,
-    JsonEncoder,
-    StringConversionSink,
-    ChunkedConversionSink;
+import 'dart:convert'
+    show HtmlEscape, JsonEncoder, StringConversionSink, ChunkedConversionSink;
 
 import 'elements/elements.dart';
 import 'elements/visitor.dart';
-import 'dart2jslib.dart' show
-    Backend,
-    CodeBuffer,
-    Compiler,
-    CompilerTask,
-    MessageKind;
+import 'dart2jslib.dart'
+    show Backend, CodeBuffer, Compiler, CompilerTask, MessageKind;
 import 'types/types.dart' show TypeMask;
 import 'deferred_load.dart' show OutputUnit;
 import 'info/info.dart';
@@ -46,14 +39,14 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
   /// output size. Either becuase the it is a function being emitted or inlined,
   /// or because it is an element that holds dependencies to other elements.
   bool shouldKeep(Element element) {
-    return compiler.dumpInfoTask.selectorsFromElement.containsKey(element)
-        || compiler.dumpInfoTask.inlineCount.containsKey(element);
+    return compiler.dumpInfoTask.selectorsFromElement.containsKey(element) ||
+        compiler.dumpInfoTask.inlineCount.containsKey(element);
   }
 
-  // Memoization of the JSON creating process.
-  // TODO(sigmund): with a proper visit order, we shouldn't need to treat it as
-  // memoization...
+  /// Visits [element] and produces it's corresponding info.
   Info process(Element element) {
+    // TODO(sigmund): change the visit order to eliminate the need to check
+    // whether or not an element has been processed.
     return _elementToInfo.putIfAbsent(element, () => visit(element));
   }
 
@@ -132,13 +125,13 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     }
 
     FieldInfo field = new FieldInfo(
-      name: element.name,
-      type: '${element.type}',
-      inferredType: '$inferredType',
-      closures: nestedClosures,
-      size: size,
-      code: code,
-      outputUnit: _unitInfoForElement(element));
+        name: element.name,
+        type: '${element.type}',
+        inferredType: '$inferredType',
+        closures: nestedClosures,
+        size: size,
+        code: code,
+        outputUnit: _unitInfoForElement(element));
     _record(element, field, result.fields);
     return field;
   }
@@ -187,7 +180,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
 
     // Omit element if it is not needed.
     if (!compiler.backend.emitter.neededClasses.contains(element) &&
-        classInfo.fields.isEmpty && classInfo.functions.isEmpty) {
+        classInfo.fields.isEmpty &&
+        classInfo.functions.isEmpty) {
       return null;
     }
     _record(element, classInfo, result.classes);
@@ -215,8 +209,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
 
     if (element.isConstructor) {
       name = name == ""
-        ? "${element.enclosingElement.name}"
-        : "${element.enclosingElement.name}.${element.name}";
+          ? "${element.enclosingElement.name}"
+          : "${element.enclosingElement.name}.${element.name}";
       kind = FunctionInfo.CONSTRUCTOR_FUNCTION_KIND;
     }
 
@@ -232,7 +226,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     if (element.hasFunctionSignature) {
       FunctionSignature signature = element.functionSignature;
       signature.forEachParameter((parameter) {
-        parameters.add(new ParameterInfo(parameter.name,
+        parameters.add(new ParameterInfo(
+            parameter.name,
             '${compiler.typesTask.getGuaranteedTypeOfElement(parameter)}',
             '${parameter.node.type}'));
       });
@@ -240,7 +235,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
 
     String returnType = null;
     // TODO(sigmund): why all these checks?
-    if (element.isInstanceMember && !element.isAbstract &&
+    if (element.isInstanceMember &&
+        !element.isAbstract &&
         compiler.world.allFunctions.contains(element)) {
       returnType = '${element.type.returnType}';
     }
@@ -264,18 +260,18 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     if (inlinedCount == null) inlinedCount = 0;
 
     var info = new FunctionInfo(
-      name: name,
-      modifiers: modifiers,
-      closures: nestedClosures,
-      size: size,
-      returnType: returnType,
-      inferredReturnType: inferredReturnType,
-      parameters: parameters,
-      sideEffects: sideEffects,
-      inlinedCount: inlinedCount,
-      code: code,
-      type: element.type.toString(),
-      outputUnit: _unitInfoForElement(element));
+        name: name,
+        modifiers: modifiers,
+        closures: nestedClosures,
+        size: size,
+        returnType: returnType,
+        inferredReturnType: inferredReturnType,
+        parameters: parameters,
+        sideEffects: sideEffects,
+        inlinedCount: inlinedCount,
+        code: code,
+        type: element.type.toString(),
+        outputUnit: _unitInfoForElement(element));
     _record(element, info, result.functions);
     return info;
   }
@@ -286,8 +282,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
       // Dump-info currently only works with the full emitter. If another
       // emitter is used it will fail here.
       full.Emitter emitter = compiler.backend.emitter.emitter;
-      var info = new OutputUnitInfo(outputUnit.name,
-          emitter.outputBuffers[outputUnit].length);
+      var info = new OutputUnitInfo(
+          outputUnit.name, emitter.outputBuffers[outputUnit].length);
       result.outputUnits.add(info);
       return info;
     });
@@ -301,8 +297,7 @@ class Selection {
 }
 
 class DumpInfoTask extends CompilerTask {
-  DumpInfoTask(Compiler compiler)
-      : super(compiler);
+  DumpInfoTask(Compiler compiler) : super(compiler);
 
   String get name => "Dump Info";
 
@@ -317,7 +312,7 @@ class DumpInfoTask extends CompilerTask {
   final Set<jsAst.Node> _tracking = new Set<jsAst.Node>();
   // A mapping from Dart Elements to Javascript AST Nodes.
   final Map<Element, List<jsAst.Node>> _elementToNodes =
-    <Element, List<jsAst.Node>>{};
+      <Element, List<jsAst.Node>>{};
   // A mapping from Javascript AST Nodes to the size of their
   // pretty-printed contents.
   final Map<jsAst.Node, int> _nodeToSize = <jsAst.Node, int>{};
@@ -361,14 +356,13 @@ class DumpInfoTask extends CompilerTask {
     if (!selectorsFromElement.containsKey(element)) {
       return const <Selection>[];
     } else {
-      return selectorsFromElement[element].expand(
-        (UniverseSelector selector) {
-          return compiler.world.allFunctions.filter(
-              selector.selector, selector.mask)
-              .map((element) {
-            return new Selection(element, selector.mask);
-          });
+      return selectorsFromElement[element].expand((UniverseSelector selector) {
+        return compiler.world.allFunctions
+            .filter(selector.selector, selector.mask)
+            .map((element) {
+          return new Selection(element, selector.mask);
         });
+      });
     }
   }
 
@@ -387,8 +381,8 @@ class DumpInfoTask extends CompilerTask {
   void registerElementAst(Element element, jsAst.Node code) {
     if (compiler.dumpInfo) {
       _elementToNodes
-        .putIfAbsent(element, () => new List<jsAst.Node>())
-        .add(code);
+          .putIfAbsent(element, () => new List<jsAst.Node>())
+          .add(code);
       _tracking.add(code);
     }
   }
@@ -407,9 +401,7 @@ class DumpInfoTask extends CompilerTask {
   // code was produced, return 0.
   int sizeOf(Element element) {
     if (_elementToNodes.containsKey(element)) {
-      return _elementToNodes[element]
-        .map(sizeOfNode)
-        .fold(0, (a, b) => a + b);
+      return _elementToNodes[element].map(sizeOfNode).fold(0, (a, b) => a + b);
     } else {
       return 0;
     }
@@ -452,27 +444,25 @@ class DumpInfoTask extends CompilerTask {
     });
   }
 
-
   void dumpInfoJson(StringSink buffer) {
     JsonEncoder encoder = const JsonEncoder.withIndent('  ');
     Stopwatch stopwatch = new Stopwatch();
     stopwatch.start();
 
     // Recursively build links to function uses
-    var functionElements = infoCollector._elementToInfo.keys
-      .where((k) => k is FunctionElement);
+    var functionElements =
+        infoCollector._elementToInfo.keys.where((k) => k is FunctionElement);
     for (var element in functionElements) {
       var info = infoCollector._elementToInfo[element];
       Iterable<Selection> uses = getRetaining(element);
       // Don't bother recording an empty list of dependencies.
       for (var selection in uses) {
-        // Some dart2js builtin functions are not recorded. Don't register these.
+        // Don't register dart2js builtin functions that are not recorded.
         var useInfo = infoCollector._elementToInfo[selection.selectedElement];
         if (useInfo == null) continue;
         info.uses.add(new DependencyInfo(useInfo, '${selection.mask}'));
       }
     }
-
 
     // Track dependencies that come from inlining.
     for (Element element in inlineMap.keys) {
@@ -498,14 +488,12 @@ class DumpInfoTask extends CompilerTask {
         noSuchMethodEnabled: compiler.backend.enabledNoSuchMethod,
         minified: compiler.enableMinification);
 
-    ChunkedConversionSink<Object> sink =
-      encoder.startChunkedConversion(
-          new StringConversionSink.fromStringSink(buffer));
+    ChunkedConversionSink<Object> sink = encoder.startChunkedConversion(
+        new StringConversionSink.fromStringSink(buffer));
     sink.add(result.toJson());
-    compiler.reportInfo(
-        NO_LOCATION_SPANNABLE,
-        MessageKind.GENERIC,
-        {'text': "View the dumped .info.json file at "
-                 "https://dart-lang.github.io/dump-info-visualizer"});
+    compiler.reportInfo(NO_LOCATION_SPANNABLE, MessageKind.GENERIC, {
+      'text': "View the dumped .info.json file at "
+          "https://dart-lang.github.io/dump-info-visualizer"
+    });
   }
 }
