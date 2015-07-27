@@ -38,8 +38,8 @@ class BasicInfo implements Info {
 
   String get serializedId => '$kind/$id';
 
-  // TODO(sigmund): make final (currently not final because we amend the name in
-  // of nested closures to record their enclosing element).
+  // TODO(sigmund): make final (currently not final because we amend the name of
+  // nested closures to record their enclosing element).
   String name;
 
   /// If using deferred libraries, where the element associated with this info
@@ -63,24 +63,24 @@ class AllInfo {
   ProgramInfo program;
 
   /// Information about each library processed by the compiler.
-  List<LibraryInfo> libraries = [];
+  List<LibraryInfo> libraries = <LibraryInfo>[];
 
   /// Information about each function (includes methods and getters in any
   /// library)
-  List<FunctionInfo> functions = [];
+  List<FunctionInfo> functions = <FunctionInfo>[];
 
   /// Information about type defs in the program.
-  List<TypedefInfo> typedefs = [];
+  List<TypedefInfo> typedefs = <TypedefInfo>[];
 
   /// Information about each class (in any library).
-  List<ClassInfo> classes = [];
+  List<ClassInfo> classes = <ClassInfo>[];
 
   /// Information about fields (in any class).
-  List<FieldInfo> fields = [];
+  List<FieldInfo> fields = <FieldInfo>[];
 
   /// Information about output units (should be just one entry if not using
   /// deferred loading).
-  List<OutputUnitInfo> outputUnits = [];
+  List<OutputUnitInfo> outputUnits = <OutputUnitInfo>[];
 
   /// Details about all deferred imports and what files would be loaded when the
   /// import is resolved.
@@ -177,9 +177,9 @@ class ProgramInfo {
 
 class LibraryInfo extends BasicInfo {
   final Uri uri;
-  final List<FunctionInfo> topLevelFunctions = [];
-  final List<FieldInfo> topLevelVariables = [];
-  final List<ClassInfo> classes = [];
+  final List<FunctionInfo> topLevelFunctions = <FunctionInfo>[];
+  final List<FieldInfo> topLevelVariables = <FieldInfo>[];
+  final List<ClassInfo> classes = <ClassInfo>[];
 
   static int _id = 0;
 
@@ -209,8 +209,8 @@ class ClassInfo extends BasicInfo {
   final bool isAbstract;
 
   // TODO(sigmund): split static vs instance vs closures
-  final List<FunctionInfo> functions = [];
-  final List<FieldInfo> fields = [];
+  final List<FunctionInfo> functions = <FunctionInfo>[];
+  final List<FieldInfo> fields = <FieldInfo>[];
   static int _ids = 0;
 
   ClassInfo(
@@ -302,7 +302,7 @@ class FunctionInfo extends BasicInfo {
   String code;
 
   /// How does this function depend on other functions or fields.
-  List<DependencyInfo> uses = [];
+  List<DependencyInfo> uses = <DependencyInfo>[];
 
   FunctionInfo(
       {String name,
@@ -342,6 +342,8 @@ class DependencyInfo {
   final Info target;
 
   /// Either a selector mask indicating how this is used, or 'inlined'.
+  // TODO(sigmund): split mask into an enum or something more precise to really
+  // describe the dependencies in detail.
   final String mask;
 
   DependencyInfo(this.target, this.mask);

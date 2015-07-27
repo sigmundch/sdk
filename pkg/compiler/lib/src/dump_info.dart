@@ -70,7 +70,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     String libname = element.getLibraryName();
     libname = libname == "" ? "<unnamed>" : libname;
     int size = compiler.dumpInfoTask.sizeOf(element);
-    var info = new LibraryInfo(libname, element.canonicalUri, null, size);
+    LibraryInfo info =
+      new LibraryInfo(libname, element.canonicalUri, null, size);
 
     LibraryElement realElement = element.isPatched ? element.patch : element;
     realElement.forEachLocalMember((Element member) {
@@ -94,7 +95,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
 
   TypedefInfo visitTypedefElement(TypedefElement element, _) {
     if (element.alias == null) return null;
-    var info = new TypedefInfo(element.name, '${element.alias}');
+    TypedefInfo info = new TypedefInfo(element.name, '${element.alias}');
     _record(element, info, result.typedefs);
     return info;
   }
@@ -115,9 +116,9 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
       code = emittedCode.toString();
     }
 
-    var nestedClosures = <FunctionInfo>[];
+    List<FunctionInfo> nestedClosures = <FunctionInfo>[];
     for (Element closure in element.nestedClosures) {
-      var child = this.process(closure);
+      Info child = this.process(closure);
       if (child != null) {
         nestedClosures.add(child);
         size += child.size;
@@ -214,15 +215,15 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
       kind = FunctionInfo.CONSTRUCTOR_FUNCTION_KIND;
     }
 
-    var modifiers = new FunctionModifiers(
+    FunctionModifiers modifiers = new FunctionModifiers(
         isStatic: element.isStatic,
         isConst: element.isConst,
         isFactory: element.isFactoryConstructor,
         isExternal: element.isPatched);
-    var emittedCode = compiler.dumpInfoTask.codeOf(element);
+    StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
     String code = emittedCode == null ? null : '$emittedCode';
 
-    var parameters = <ParameterInfo>[];
+    List<ParameterInfo> parameters = <ParameterInfo>[];
     if (element.hasFunctionSignature) {
       FunctionSignature signature = element.functionSignature;
       signature.forEachParameter((parameter) {
@@ -244,11 +245,11 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
         '${compiler.typesTask.getGuaranteedReturnTypeOfElement(element)}';
     String sideEffects = '${compiler.world.getSideEffectsOfElement(element)}';
 
-    var nestedClosures = <FunctionInfo>[];
+    List<FunctionInfo> nestedClosures = <FunctionInfo>[];
     if (element is MemberElement) {
       MemberElement member = element as MemberElement;
       for (Element closure in member.nestedClosures) {
-        var child = this.process(closure);
+        Info child = this.process(closure);
         if (child != null) {
           nestedClosures.add(child);
           size += child.size;
@@ -259,7 +260,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     int inlinedCount = compiler.dumpInfoTask.inlineCount[element];
     if (inlinedCount == null) inlinedCount = 0;
 
-    var info = new FunctionInfo(
+    FunctionInfo info = new FunctionInfo(
         name: name,
         modifiers: modifiers,
         closures: nestedClosures,
@@ -277,12 +278,13 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
   }
 
   OutputUnitInfo _unitInfoForElement(Element element) {
-    var outputUnit = compiler.deferredLoadTask.outputUnitForElement(element);
+    OutputUnit outputUnit =
+      compiler.deferredLoadTask.outputUnitForElement(element);
     return _outputToInfo.putIfAbsent(outputUnit, () {
       // Dump-info currently only works with the full emitter. If another
       // emitter is used it will fail here.
       full.Emitter emitter = compiler.backend.emitter.emitter;
-      var info = new OutputUnitInfo(
+      OutputUnitInfo info = new OutputUnitInfo(
           outputUnit.name, emitter.outputBuffers[outputUnit].length);
       result.outputUnits.add(info);
       return info;
@@ -450,15 +452,15 @@ class DumpInfoTask extends CompilerTask {
     stopwatch.start();
 
     // Recursively build links to function uses
-    var functionElements =
+    Iterable<FunctionElement> functionElements =
         infoCollector._elementToInfo.keys.where((k) => k is FunctionElement);
-    for (var element in functionElements) {
-      var info = infoCollector._elementToInfo[element];
+    for (FunctionElement element in functionElements) {
+      FunctionInfo info = infoCollector._elementToInfo[element];
       Iterable<Selection> uses = getRetaining(element);
       // Don't bother recording an empty list of dependencies.
-      for (var selection in uses) {
+      for (Selection selection in uses) {
         // Don't register dart2js builtin functions that are not recorded.
-        var useInfo = infoCollector._elementToInfo[selection.selectedElement];
+        Info useInfo = infoCollector._elementToInfo[selection.selectedElement];
         if (useInfo == null) continue;
         info.uses.add(new DependencyInfo(useInfo, '${selection.mask}'));
       }
@@ -466,16 +468,16 @@ class DumpInfoTask extends CompilerTask {
 
     // Track dependencies that come from inlining.
     for (Element element in inlineMap.keys) {
-      var functionInfo = infoCollector._elementToInfo[element];
+      FunctionInfo functionInfo = infoCollector._elementToInfo[element];
       if (functionInfo == null) continue;
       for (Element held in inlineMap[element]) {
-        var heldInfo = infoCollector._elementToInfo[held];
+        Info heldInfo = infoCollector._elementToInfo[held];
         if (heldInfo == null) continue;
         functionInfo.uses.add(new DependencyInfo(heldInfo, 'inlined'));
       }
     }
 
-    var result = infoCollector.result;
+    AllInfo result = infoCollector.result;
     result.deferredFiles = compiler.deferredLoadTask.computeDeferredMap();
     stopwatch.stop();
     result.program = new ProgramInfo(
