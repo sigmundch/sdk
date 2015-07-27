@@ -294,18 +294,11 @@ class _ParseHelper {
 }
 
 class LibraryInfo extends BasicInfo {
-<<<<<<< HEAD
   final Uri uri;
   final List<FunctionInfo> topLevelFunctions = <FunctionInfo>[];
   final List<FieldInfo> topLevelVariables = <FieldInfo>[];
   final List<ClassInfo> classes = <ClassInfo>[];
-=======
-  Uri uri;
-  final List<FunctionInfo> topLevelFunctions = [];
-  final List<FieldInfo> topLevelVariables = [];
-  final List<ClassInfo> classes = [];
-  final List<TypedefInfo> typedefs = [];
->>>>>>> 00d370e... deps & parsing: add parsing and a simple tool that shows distribution by package
+  final List<TypedefInfo> typedefs = <TypedefInfo>[];
 
   static int _id = 0;
 
