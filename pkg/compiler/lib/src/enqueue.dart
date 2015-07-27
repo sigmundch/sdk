@@ -96,7 +96,10 @@ abstract class Enqueuer {
    */
   void addToWorkList(Element element) {
     assert(invariant(element, element.isDeclaration));
-    internalAddToWorkList(element);
+    if (internalAddToWorkList(element)) {
+      compiler.dumpInfoTask.registerDependency(
+          compiler.currentElement, element);
+    }
   }
 
   /**

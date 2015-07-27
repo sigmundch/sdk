@@ -38,15 +38,17 @@ class BasicInfo implements Info {
 
   String get serializedId => '$kind/$id';
 
-  // TODO(sigmund): make final (currently not final because we amend the name of
-  // nested closures to record their enclosing element).
   String name;
 
   /// If using deferred libraries, where the element associated with this info
   /// is generated.
-  final OutputUnitInfo outputUnit;
+  OutputUnitInfo outputUnit;
 
   BasicInfo(this.kind, this.id, this.name, this.outputUnit, [this.size = 0]);
+
+  BasicInfo._fromId(String serializedId)
+     : kind = serializedId.substring(0, serializedId.indexOf('/')),
+       id = int.parse(serializedId.substring(serializedId.indexOf('/') + 1));
 
   Map toJson() {
     var res = {'id': serializedId, 'kind': kind, 'name': name, 'size': size};
@@ -88,6 +90,8 @@ class AllInfo {
   // the same map that is created for the `--deferred-map` flag.
   Map<String, Map<String, dynamic>> deferredFiles;
 
+  Map<Info, List<Info>> deps = {};
+
   /// Major version indicating breaking changes in the format. A new version
   /// means that an old deserialization algorithm will not work with the new
   /// format.
@@ -102,10 +106,7 @@ class AllInfo {
 
   AllInfo();
 
-  factory AllInfo.fromJson(Map map) {
-    // TODO(sigmund): implement
-    throw UnimplementedError('deserialization of dump-info not implemented');
-  }
+  static AllInfo parseFromJson(Map map) => new _ParseHelper().parseAll(map);
 
   Map _listAsJsonMap(List<Info> list) {
     var map = <String, Map>{};
@@ -124,6 +125,14 @@ class AllInfo {
     return map;
   }
 
+  Map _extractDeps() {
+    var map = <String, List>{};
+    deps.forEach((k, v) {
+      map[k.serializedId] = v.map((i) => i.serializedId).toList();
+    });
+    return map;
+  }
+
   Map toJson() => {
         'elements': {
           'library': _listAsJsonMap(libraries),
@@ -133,6 +142,7 @@ class AllInfo {
           'field': _listAsJsonMap(fields),
         },
         'holding': _extractHoldingInfo(),
+        'deps': _extractDeps(),
         'outputUnits': outputUnits.map((u) => u.toJson()).toList(),
         'dump_version': version,
         'deferredFiles': deferredFiles,
@@ -175,11 +185,127 @@ class ProgramInfo {
       };
 }
 
+class _ParseHelper {
+  Map<String, Info> registry = {};
+
+  AllInfo parseAll(Map json) {
+    var result = new AllInfo();
+    var elements = json['elements'];
+    result.libraries.addAll(elements['library'].values.map(parseLibrary));
+    result.classes.addAll(elements['class'].values.map(parseClass));
+    result.functions.addAll(elements['function'].values.map(parseFunction));
+    result.fields.addAll(elements['field'].values.map(parseField));
+    result.typedefs.addAll(elements['typedef'].values.map(parseTypedef));
+
+    var functionMap = {};
+    for (var f in result.functions) {
+      functionMap[f.serializedId] = f;
+    }
+
+    json['holding'].forEach((k, deps) {
+      var src = functionMap[k];
+      if (src == null) {
+        // TODO(sigmund): implement dependencies from fields.
+        return;
+      }
+      for (var dep in deps) {
+        var target = functionMap[dep['id']];
+        src.uses.add(new DependencyInfo(target, dep['mask']));
+      }
+    });
+
+    result.program = parseProgram(json['program']);
+    // todo: version, etc
+    return result;
+  }
+
+  LibraryInfo parseLibrary(Map json) {
+    var result = new LibraryInfo._(json['id']);
+    assert(result.kind == 'library');
+    result.name = json['name'];
+    result.uri = Uri.parse(json['canonicalUri']);
+    var outputUnitId = json['outputUnit'];
+    if (outputUnitId != null) {
+      result.outputUnit = new OutputUnitInfo._(outputUnitId);
+    }
+    result.size = json['size'];
+    for (var child in json['children'].map(parseId)) {
+      if (child is FunctionInfo) {
+        result.topLevelFunctions.add(child);
+      } else if (child is FieldInfo) {
+        result.topLevelVariables.add(child);
+      } else if (child is ClassInfo) {
+        result.classes.add(child);
+      } else {
+        assert(child is TypedefInfo);
+        result.typedefs.add(child);
+      }
+    }
+    return result;
+  }
+
+  ClassInfo parseClass(Map json) => null;
+  FieldInfo parseField(Map json) => null;
+  TypedefInfo parseTypedef(Map json) => null;
+
+  ProgramInfo parseProgram(Map json) =>
+      new ProgramInfo()..size = json['size'];
+
+  FunctionInfo parseFunction(Map json) {
+    return new FunctionInfo._(json['id'])
+      ..name = json['name']
+      ..outputUnit = new OutputUnitInfo._(json['outputUnit'])
+      ..size = json['size']
+      ..type = json['type']
+      ..returnType = json['returnType']
+      ..inferredReturnType = json['inferredReturnType']
+      ..parameters = json['parameters'].map(parseParameter).toList()
+      ..code = json['code']
+      ..sideEffects = json['sideEffects']
+      ..modifiers = parseModifiers(json['modifiers'])
+      ..closures = json['children'].map(parseId).toList();
+  }
+
+  ParameterInfo parseParameter(Map json) =>
+      new ParameterInfo(json['name'], json['type'], json['declaredType']);
+
+  FunctionModifiers parseModifiers(Map<String, bool> json) {
+    return new FunctionModifiers(
+        isStatic: json['static'] == true,
+        isConst: json['const'] == true,
+        isFactory: json['factory'] == true,
+        isExternal: json['external'] == true);
+  }
+
+  Info parseId(String serializedId) => registry.putIfAbsent(serializedId, () {
+    if (serializedId.startsWith('function/')) {
+      return new FunctionInfo._(serializedId);
+    } else if (serializedId.startsWith('library/')) {
+      return new LibraryInfo._(serializedId);
+    } else if (serializedId.startsWith('class/')) {
+      return new ClassInfo._(serializedId);
+    } else if (serializedId.startsWith('field/')) {
+      return new FieldInfo._(serializedId);
+    } else if (serializedId.startsWith('typedef/')) {
+      return new TypedefInfo._(serializedId);
+    }
+    assert(false);
+  });
+}
+
 class LibraryInfo extends BasicInfo {
+<<<<<<< HEAD
   final Uri uri;
   final List<FunctionInfo> topLevelFunctions = <FunctionInfo>[];
   final List<FieldInfo> topLevelVariables = <FieldInfo>[];
   final List<ClassInfo> classes = <ClassInfo>[];
+=======
+  Uri uri;
+  final List<FunctionInfo> topLevelFunctions = [];
+  final List<FieldInfo> topLevelVariables = [];
+  final List<ClassInfo> classes = [];
+  final List<TypedefInfo> typedefs = [];
+>>>>>>> 00d370e... deps & parsing: add parsing and a simple tool that shows distribution by package
 
   static int _id = 0;
 
@@ -189,12 +315,15 @@ class LibraryInfo extends BasicInfo {
   LibraryInfo(String name, this.uri, OutputUnitInfo outputUnit, int size)
       : super('library', _id++, name, outputUnit, size);
 
+  LibraryInfo._(String serializedId) : super._fromId(serializedId);
+
   Map toJson() => super.toJson()
     ..addAll({
       'children': []
         ..addAll(topLevelFunctions.map((f) => f.serializedId))
         ..addAll(topLevelVariables.map((v) => v.serializedId))
-        ..addAll(classes.map((c) => c.serializedId)),
+        ..addAll(classes.map((c) => c.serializedId))
+        ..addAll(typedefs.map((t) => t.serializedId)),
       'canonicalUri': '$uri',
     });
 }
@@ -203,10 +332,12 @@ class OutputUnitInfo extends BasicInfo {
   static int _ids = 0;
   OutputUnitInfo(String name, int size)
       : super('outputUnit', _ids++, name, null, size);
+
+  OutputUnitInfo._(String serializedId) : super._fromId(serializedId);
 }
 
 class ClassInfo extends BasicInfo {
-  final bool isAbstract;
+  bool isAbstract;
 
   // TODO(sigmund): split static vs instance vs closures
   final List<FunctionInfo> functions = <FunctionInfo>[];
@@ -216,6 +347,8 @@ class ClassInfo extends BasicInfo {
   ClassInfo(
       {String name, this.isAbstract, OutputUnitInfo outputUnit, int size: 0})
       : super('class', _ids++, name, outputUnit, size);
+
+  ClassInfo._(String serializedId) : super._fromId(serializedId);
 
   Map toJson() => super.toJson()
     ..addAll({
@@ -244,6 +377,8 @@ class FieldInfo extends BasicInfo {
       OutputUnitInfo outputUnit})
       : super('field', _ids++, name, outputUnit, size);
 
+  FieldInfo._(String serializedId) : super._fromId(serializedId);
+
   Map toJson() => super.toJson()
     ..addAll({
       'children': closures.map((i) => i.serializedId).toList(),
@@ -260,6 +395,8 @@ class TypedefInfo extends BasicInfo {
   TypedefInfo(String name, this.type, OutputUnitInfo outputUnit)
       : super('typedef', _ids++, name, outputUnit);
 
+  TypedefInfo._(String serializedId) : super._fromId(serializedId);
+
   Map toJson() => super.toJson()..['type'] = '$type';
 }
 
@@ -271,10 +408,10 @@ class FunctionInfo extends BasicInfo {
   static int _ids = 0;
 
   /// Kind of function (top-level function, closure, method, or constructor).
-  final int functionKind;
+  int functionKind;
 
   /// Modifiers applied to this function.
-  final FunctionModifiers modifiers;
+  FunctionModifiers modifiers;
 
   /// Nested closures that appear within the body of this function.
   List<FunctionInfo> closures;
@@ -319,6 +456,8 @@ class FunctionInfo extends BasicInfo {
       this.inlinedCount,
       this.code})
       : super('function', _ids++, name, outputUnit, size);
+
+  FunctionInfo._(String serializedId) : super._fromId(serializedId);
 
   Map toJson() => super.toJson()
     ..addAll({
@@ -374,14 +513,6 @@ class FunctionModifiers {
       this.isConst: false,
       this.isFactory: false,
       this.isExternal: false});
-
-  factory FunctionModifiers.fromJson(Map<String, bool> json) {
-    return new FunctionModifiers(
-        isStatic: json['static'] == true,
-        isConst: json['const'] == true,
-        isFactory: json['factory'] == true,
-        isExternal: json['external'] == true);
-  }
 
   // TODO(sigmund): exclude false values (requires bumping the format version):
   //   Map toJson() {
