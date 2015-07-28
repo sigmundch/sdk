@@ -22,6 +22,8 @@ abstract class Info {
 
   /// Serializes the information into a JSON format.
   Map toJson();
+
+  void accept(InfoVisitor visitor);
 }
 
 /// Common information used for most kind of elements.
@@ -29,7 +31,7 @@ abstract class Info {
 //  - inputSize: bytes used in the Dart source program
 //  - transitiveSize: bytes including the size of dependencies that are only
 //    retained because of this element.
-class BasicInfo implements Info {
+abstract class BasicInfo implements Info {
   final String kind;
   final int id;
 
@@ -44,7 +46,7 @@ class BasicInfo implements Info {
   /// is generated.
   OutputUnitInfo outputUnit;
 
-  BasicInfo(this.kind, this.id, this.name, this.outputUnit, [this.size = 0]);
+  BasicInfo(this.kind, this.id, this.name, this.outputUnit, this.size);
 
   BasicInfo._fromId(String serializedId)
      : kind = serializedId.substring(0, serializedId.indexOf('/')),
@@ -57,6 +59,16 @@ class BasicInfo implements Info {
     if (outputUnit != null) res['outputUnit'] = outputUnit.serializedId;
     return res;
   }
+
+  String toString() => '$serializedId: $name';
+}
+
+/// Info associated with elements containing executable code (like fields and
+/// methods)
+abstract class CodeInfo implements Info {
+
+  /// How does this function or field depend on others.
+  final List<DependencyInfo> uses = <DependencyInfo>[];
 }
 
 /// The entire information produced while compiling a program.
@@ -118,10 +130,12 @@ class AllInfo {
 
   Map _extractHoldingInfo() {
     var map = <String, List>{};
-    for (var f in functions) {
-      if (f.uses.isEmpty) continue;
-      map[f.serializedId] = f.uses.map((u) => u.toJson()).toList();
+    void helper(CodeInfo info) {
+      if (info.uses.isEmpty) return;
+      map[info.serializedId] = info.uses.map((u) => u.toJson()).toList();
     }
+    functions.forEach(helper);
+    fields.forEach(helper);
     return map;
   }
 
@@ -150,6 +164,8 @@ class AllInfo {
         // TODO(sigmund): change viewer to accept an int?
         'program': program.toJson(),
       };
+
+  void accept(InfoVisitor visitor) => visitor.visitAll(this);
 }
 
 class ProgramInfo {
@@ -183,6 +199,8 @@ class ProgramInfo {
         'noSuchMethodEnabled': noSuchMethodEnabled,
         'minified': minified,
       };
+
+  void accept(InfoVisitor visitor) => visitor.visitProgram(this);
 }
 
 class _ParseHelper {
@@ -220,15 +238,12 @@ class _ParseHelper {
   }
 
   LibraryInfo parseLibrary(Map json) {
-    var result = new LibraryInfo._(json['id']);
+    var result = parseId(json['id'])
+        ..name = json['name']
+        ..uri = Uri.parse(json['canonicalUri'])
+        ..outputUnit = parseId(json['outputUnit'])
+        ..size = json['size'];
     assert(result.kind == 'library');
-    result.name = json['name'];
-    result.uri = Uri.parse(json['canonicalUri']);
-    var outputUnitId = json['outputUnit'];
-    if (outputUnitId != null) {
-      result.outputUnit = new OutputUnitInfo._(outputUnitId);
-    }
-    result.size = json['size'];
     for (var child in json['children'].map(parseId)) {
       if (child is FunctionInfo) {
         result.topLevelFunctions.add(child);
@@ -244,17 +259,47 @@ class _ParseHelper {
     return result;
   }
 
-  ClassInfo parseClass(Map json) => null;
-  FieldInfo parseField(Map json) => null;
-  TypedefInfo parseTypedef(Map json) => null;
+  ClassInfo parseClass(Map json) {
+    var result = parseId(json['id'])
+        ..name = json['name']
+        ..outputUnit = parseId(json['outputUnit'])
+        ..size = json['size']
+        ..isAbstract = json['modifiers']['abstract'] == true;
+    assert(result.kind == 'class');
+    for (var child in json['children'].map(parseId)) {
+      if (child is FunctionInfo) {
+        result.functions.add(child);
+      } else {
+        assert(child is FieldInfo);
+        result.fields.add(child);
+      }
+    }
+    return result;
+  }
+
+  FieldInfo parseField(Map json) {
+    return parseId(json['id'])
+      ..name = json['name']
+      ..outputUnit = parseId(json['outputUnit'])
+      ..size = json['size']
+      ..type = json['type']
+      ..inferredType = json['inferredType']
+      ..code = json['code']
+      ..closures = json['children'].map(parseId).toList();
+  }
+
+  TypedefInfo parseTypedef(Map json) => parseId(json['id'])
+      ..name = json['name']
+      ..type = json['type']
+      ..size = 0;
 
   ProgramInfo parseProgram(Map json) =>
       new ProgramInfo()..size = json['size'];
 
   FunctionInfo parseFunction(Map json) {
-    return new FunctionInfo._(json['id'])
+    return parseId(json['id'])
       ..name = json['name']
-      ..outputUnit = new OutputUnitInfo._(json['outputUnit'])
+      ..outputUnit = parseId(json['outputUnit'])
       ..size = json['size']
       ..type = json['type']
       ..returnType = json['returnType']
@@ -278,7 +323,9 @@ class _ParseHelper {
   }
 
   Info parseId(String serializedId) => registry.putIfAbsent(serializedId, () {
-    if (serializedId.startsWith('function/')) {
+    if (serializedId == null) {
+      return null;
+    } else if (serializedId.startsWith('function/')) {
       return new FunctionInfo._(serializedId);
     } else if (serializedId.startsWith('library/')) {
       return new LibraryInfo._(serializedId);
@@ -288,13 +335,15 @@ class _ParseHelper {
       return new FieldInfo._(serializedId);
     } else if (serializedId.startsWith('typedef/')) {
       return new TypedefInfo._(serializedId);
+    } else if (serializedId.startsWith('outputUnit/')) {
+      return new OutputUnitInfo._(serializedId);
     }
     assert(false);
   });
 }
 
 class LibraryInfo extends BasicInfo {
-  final Uri uri;
+  Uri uri;
   final List<FunctionInfo> topLevelFunctions = <FunctionInfo>[];
   final List<FieldInfo> topLevelVariables = <FieldInfo>[];
   final List<ClassInfo> classes = <ClassInfo>[];
@@ -319,6 +368,8 @@ class LibraryInfo extends BasicInfo {
         ..addAll(typedefs.map((t) => t.serializedId)),
       'canonicalUri': '$uri',
     });
+
+  void accept(InfoVisitor visitor) => visitor.visitLibrary(this);
 }
 
 class OutputUnitInfo extends BasicInfo {
@@ -327,6 +378,8 @@ class OutputUnitInfo extends BasicInfo {
       : super('outputUnit', _ids++, name, null, size);
 
   OutputUnitInfo._(String serializedId) : super._fromId(serializedId);
+
+  void accept(InfoVisitor visitor) => visitor.visitOutputUnit(this);
 }
 
 class ClassInfo extends BasicInfo {
@@ -351,9 +404,11 @@ class ClassInfo extends BasicInfo {
         ..addAll(fields.map((f) => f.serializedId))
         ..addAll(functions.map((m) => m.serializedId))
     });
+
+  void accept(InfoVisitor visitor) => visitor.visitClass(this);
 }
 
-class FieldInfo extends BasicInfo {
+class FieldInfo extends BasicInfo with CodeInfo {
   String type;
   String inferredType;
   List<FunctionInfo> closures;
@@ -362,7 +417,7 @@ class FieldInfo extends BasicInfo {
   static int _ids = 0;
   FieldInfo(
       {String name,
-      int size,
+      int size: 0,
       this.type,
       this.inferredType,
       this.closures,
@@ -379,6 +434,8 @@ class FieldInfo extends BasicInfo {
       'code': code,
       'type': type,
     });
+
+  void accept(InfoVisitor visitor) => visitor.visitField(this);
 }
 
 class TypedefInfo extends BasicInfo {
@@ -386,14 +443,16 @@ class TypedefInfo extends BasicInfo {
 
   static int _ids = 0;
   TypedefInfo(String name, this.type, OutputUnitInfo outputUnit)
-      : super('typedef', _ids++, name, outputUnit);
+      : super('typedef', _ids++, name, outputUnit, 0);
 
   TypedefInfo._(String serializedId) : super._fromId(serializedId);
 
   Map toJson() => super.toJson()..['type'] = '$type';
+
+  void accept(InfoVisitor visitor) => visitor.visitTypedef(this);
 }
 
-class FunctionInfo extends BasicInfo {
+class FunctionInfo extends BasicInfo with CodeInfo {
   static const int TOP_LEVEL_FUNCTION_KIND = 0;
   static const int CLOSURE_FUNCTION_KIND = 1;
   static const int METHOD_FUNCTION_KIND = 2;
@@ -431,13 +490,10 @@ class FunctionInfo extends BasicInfo {
   /// The actual generated code.
   String code;
 
-  /// How does this function depend on other functions or fields.
-  List<DependencyInfo> uses = <DependencyInfo>[];
-
   FunctionInfo(
       {String name,
       OutputUnitInfo outputUnit,
-      int size,
+      int size: 0,
       this.functionKind,
       this.modifiers,
       this.closures,
@@ -466,6 +522,8 @@ class FunctionInfo extends BasicInfo {
       // Note: version 3.2 of dump-info serializes `uses` in a section called
       // `holding` at the top-level.
     });
+
+  void accept(InfoVisitor visitor) => visitor.visitFunction(this);
 }
 
 /// Information about how a dependency is used.
@@ -523,3 +581,53 @@ class FunctionModifiers {
         'external': isExternal,
       };
 }
+
+class InfoVisitor {
+  visitAll(AllInfo info) {}
+  visitProgram(ProgramInfo info) {}
+  visitLibrary(LibraryInfo info) {}
+  visitClass(ClassInfo info) {}
+  visitField(FieldInfo info) {}
+  visitFunction(FunctionInfo info) {}
+  visitTypedef(TypedefInfo info) {}
+  visitOutput(OutputInfo info) {}
+
+}
+
+/// A visitor that recursively walks each portion of the program. Because the
+/// info representation is redundant, this visitor only walks the structure of
+/// the program and skips some redundant links. FOr example, even though
+/// visitAll contains references to functions, this visitor only recurses to
+/// visit libraries, then from each library we visit functions and classes, and so
+/// on.
+class RecursiveInfoVisitor extends InfoVisitor {
+  visitAll(AllInfo info) {
+    // Note: we don't visit functions, fields, classes, and typedefs because
+    // they are reachable from the library info.
+    info.libraries.forEach(visitLibrary);
+  }
+
+  visitLibrary(LibraryInfo info) {
+    info.topLevelFunctions.forEach(visitFunction);
+    info.topLevelVariables.forEach(visitField);
+    info.classes.forEach(visitClass);
+    info.typedefs.forEach(visitTypedef);
+  }
+
+  visitClass(ClassInfo info) {
+    info.functions.forEach(visitFunction);
+    info.fields.forEach(visitField);
+  }
+
+  visitField(FieldInfo info) {
+    info.closures.forEach(visitFunction);
+  }
+
+  visitFunction(FunctionInfo info) {
+    info.closures.forEach(visitFunction);
+  }
+
+  visitTypedef(TypedefInfo info) {}
+  visitOutput(OutputInfo info) {}
+}
+

@@ -82,6 +82,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
         info.topLevelFunctions.add(child);
       } else if (child is FieldInfo) {
         info.topLevelVariables.add(child);
+      } else if (child is TypedefInfo) {
+        info.typedefs.add(child);
       } else if (child != null) {
         print('unexpected child of $info: $child ==> ${child.runtimeType}');
         assert(false);
@@ -95,7 +97,8 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
 
   TypedefInfo visitTypedefElement(TypedefElement element, _) {
     if (element.alias == null) return null;
-    TypedefInfo info = new TypedefInfo(element.name, '${element.alias}');
+    TypedefInfo info = new TypedefInfo(element.name, '${element.alias}',
+        _unitInfoForElement(element));
     _record(element, info, result.typedefs);
     return info;
   }
