@@ -114,30 +114,37 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     int size = compiler.dumpInfoTask.sizeOf(element);
     String code;
     StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
+    if ('$element'.contains('foo')) print('$element => $emittedCode');
     if (emittedCode != null) {
       size += emittedCode.length;
       code = emittedCode.toString();
     }
 
+    FieldInfo info = new FieldInfo(
+        name: element.name,
+        type: '${element.type}',
+        inferredType: '$inferredType',
+        size: size,
+        code: code,
+        outputUnit: _unitInfoForElement(element));
+    _elementToInfo[element] = info;
+
     List<FunctionInfo> nestedClosures = <FunctionInfo>[];
     for (Element closure in element.nestedClosures) {
       Info child = this.process(closure);
       if (child != null) {
+        ClassInfo parent = this.process(closure.enclosingElement);
+        if (parent != null) {
+          child.name = "${parent.name}.${child.name}";
+        }
+        assert(parent == info);
         nestedClosures.add(child);
         size += child.size;
       }
     }
-
-    FieldInfo field = new FieldInfo(
-        name: element.name,
-        type: '${element.type}',
-        inferredType: '$inferredType',
-        closures: nestedClosures,
-        size: size,
-        code: code,
-        outputUnit: _unitInfoForElement(element));
-    _record(element, field, result.fields);
-    return field;
+    info.closures = nestedClosures;
+    _record(element, info, result.fields);
+    return info;
   }
 
   ClassInfo visitClassElement(ClassElement element, _) {
@@ -148,8 +155,11 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     _elementToInfo[element] = classInfo;
 
     int size = compiler.dumpInfoTask.sizeOf(element);
+    bool show = false; //size > 0 && !element.library.isPlatformLibrary;
+    if (show) print('$element: $size');
     element.forEachLocalMember((Element member) {
       Info info = this.process(member);
+      if (show) print('$element.$member > $info');
       if (info == null) return;
       if (info is FieldInfo) {
         classInfo.fields.add(info);
@@ -175,12 +185,18 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
           if (parentInfo != null) {
             closureInfo.name = "${parentInfo.name}.${closureInfo.name}";
           }
+          if (show) {
+            print('\x1b[32m$element: $parentInfo > $closureInfo\x1b[0m');
+            var code = closureInfo.code;
+            print('[$code]: ${code.length}');
+          }
           size += closureInfo.size;
         }
       }
     });
 
     classInfo.size = size;
+    if (show) print('\x1b[33m$classInfo\x1b[0m');
 
     // Omit element if it is not needed.
     if (!compiler.backend.emitter.neededClasses.contains(element) &&
@@ -248,25 +264,12 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
         '${compiler.typesTask.getGuaranteedReturnTypeOfElement(element)}';
     String sideEffects = '${compiler.world.getSideEffectsOfElement(element)}';
 
-    List<FunctionInfo> nestedClosures = <FunctionInfo>[];
-    if (element is MemberElement) {
-      MemberElement member = element as MemberElement;
-      for (Element closure in member.nestedClosures) {
-        Info child = this.process(closure);
-        if (child != null) {
-          nestedClosures.add(child);
-          size += child.size;
-        }
-      }
-    }
-
     int inlinedCount = compiler.dumpInfoTask.inlineCount[element];
     if (inlinedCount == null) inlinedCount = 0;
 
     FunctionInfo info = new FunctionInfo(
         name: name,
         modifiers: modifiers,
-        closures: nestedClosures,
         size: size,
         returnType: returnType,
         inferredReturnType: inferredReturnType,
@@ -276,6 +279,26 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
         code: code,
         type: element.type.toString(),
         outputUnit: _unitInfoForElement(element));
+    _elementToInfo[element] = info;
+
+    List<FunctionInfo> nestedClosures = <FunctionInfo>[];
+    if (element is MemberElement) {
+      MemberElement member = element as MemberElement;
+      for (Element closure in member.nestedClosures) {
+        Info child = this.process(closure);
+        if (child != null) {
+          ClassInfo parent = this.process(closure.enclosingElement);
+          if (parent != null) {
+            child.name = "${parent.name}.${child.name}";
+          }
+          assert(parent == info);
+
+          nestedClosures.add(child);
+          size += child.size;
+        }
+      }
+    }
+    info.closures = nestedClosures;
     _record(element, info, result.functions);
     return info;
   }
@@ -318,6 +341,7 @@ class DumpInfoTask extends CompilerTask {
   // A mapping from Dart Elements to Javascript AST Nodes.
   final Map<Element, List<jsAst.Node>> _elementToNodes =
       <Element, List<jsAst.Node>>{};
+  final Map<jsAst.Node, Element> _nodeToElement = <jsAst.Node, Element>{};
   // A mapping from Javascript AST Nodes to the size of their
   // pretty-printed contents.
   final Map<jsAst.Node, int> _nodeToSize = <jsAst.Node, int>{};
@@ -393,16 +417,28 @@ class DumpInfoTask extends CompilerTask {
       _elementToNodes
           .putIfAbsent(element, () => new List<jsAst.Node>())
           .add(code);
+      _nodeToElement[code] = element;
       _tracking.add(code);
     }
   }
 
   // Records the size of a dart AST node after it has been
   // pretty-printed into the output buffer.
-  void recordAstSize(jsAst.Node node, int size) {
+  void recordAstSize(jsAst.Node node, int size,
+      StringBuffer codeBuffer, int start, int end) {
+    var e = _nodeToElement[node];
+    bool show = e != null && '${e.name}'.endsWith('js_dart2js.dart');
+    //bool show = size != code.length; //false; //e != null && size > 0 && !e.library.isPlatformLibrary;
+    if (show) print('$e: record size> ${node} - $size ${codeBuffer.toString().substring(start, end)}');
     if (isTracking(node)) {
       //TODO: should I be incrementing here instead?
       _nodeToSize[node] = size;
+    } else {
+      //if (code.length > 30) {
+      //  print('::: +$size ${code.substring(0, 30).replaceAll('\n','\\n')}...');
+      //} else {
+      //  print('::: +$size $code');
+      //}
     }
   }
 

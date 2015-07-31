@@ -5,9 +5,13 @@ import 'dart:math' show max;
 import 'package:compiler/src/info/info.dart';
 
 class _SizeValidator extends RecursiveInfoVisitor {
-  Map<Info, int> diffs = {};
-  StringBuffer allCode = new StringBuffer();
+  final Map<Info, int> missing = {};
+  final Set<Info> discovered = new Set<Info>();
+  int discoveredSizes = 0;
+  final StringBuffer allCode = new StringBuffer();
+  final StringBuffer debugCode = new StringBuffer();
   int _current = 0;
+  int _indent = 2;
 
   int _before(info) {
     var old = _current;
@@ -16,42 +20,97 @@ class _SizeValidator extends RecursiveInfoVisitor {
   }
 
   void _after(info, old) {
-    if (_current != info.size) {
-      diffs[info] = _current - info.size;
-      if (info is LibraryInfo && _current < info.size) _current = info.size;
+    if (_current > info.size) {
+      missing[info] = _current - info.size;
+    } else {
+      _current = info.size;
     }
     _current += old;
   }
 
+  bool _debug = false;
+
   visitLibrary(LibraryInfo info) {
+    if ('$info'.contains('dart.js')) {
+      //_debug = true;
+    }
     var old = _before(info);
+    if (_debug) {
+      debugCode.write('{\n');
+      _indent = 4;
+    }
     super.visitLibrary(info);
     _after(info, old);
+    if (_debug) {
+      _debug = false;
+      _indent = 4;
+      debugCode.write('}\n');
+    }
+  }
+
+  _handleCodeInfo(info) {
+    if (discovered.add(info)) {
+      discoveredSizes += info.size;
+    }
+    var code = info.code;
+    if (_debug && code != null) {
+      bool isClosureClass = info.name.endsWith('.call');
+      if (isClosureClass) {
+        var cname = info.name.substring(0, info.name.indexOf('.'));
+        debugCode.write(' ' * _indent);
+        debugCode.write(cname);
+        debugCode.write(': {\n');
+        _indent += 2;
+        debugCode.write(' ' * _indent);
+        debugCode.write('...\n');
+      }
+
+      print('$info ${isClosureClass} \n${info.code}');
+      debugCode.write(' ' * _indent);
+      var endsInNewLine = code.endsWith('\n');
+      if (endsInNewLine) code = code.substring(0, code.length - 1);
+      debugCode.write(code.replaceAll('\n', '\n' + (' ' * _indent)));
+      if (endsInNewLine) debugCode.write(',\n');
+      if (isClosureClass) {
+        _indent -= 2;
+        debugCode.write(' ' * _indent);
+        debugCode.write('},\n');
+      }
+    }
+    _current += info.size;
   }
 
   visitField(FieldInfo info) {
-    _current += info.size;
-    allCode.write('\n');
-    allCode.write(info.code);
+    _handleCodeInfo(info);
     super.visitField(info);
   }
 
   visitFunction(FunctionInfo info) {
-    _current += info.size;
-    allCode.write('\n');
-    allCode.write(info.code);
+    _handleCodeInfo(info);
     super.visitFunction(info);
   }
 
   visitTypedef(TypedefInfo info) {
+    if (_debug) print('$info');
     _current += info.size;
     super.visitTypedef(info);
   }
 
   visitClass(ClassInfo info) {
-    //var old = _before(info);
+    if (_debug) {
+      print('$info');
+      debugCode.write(' ' * _indent);
+      debugCode.write('${info.name}: {\n');
+      _indent += 2;
+    }
+    var old = _before(info);
     super.visitClass(info);
-    //_after(info, old);
+    _after(info, old);
+    if (_debug) {
+      debugCode.write(' ' * _indent);
+      debugCode.write('},\n');
+      _indent -= 2;
+    }
   }
 
 }
@@ -66,55 +125,41 @@ main(args) {
   var json = JSON.decode(new File(filename).readAsStringSync());
   var info = AllInfo.parseFromJson(json);
 
-  int totalLib = 0;
-  int totalFunctions = 0;
-  int totalFields = 0;
+  int totalLib = info.libraries.fold(0, (n, lib) => n + lib.size);
+  int totalFunctions = info.functions.fold(0, (n, f) => n + f.size);
+  int totalFields = info.fields.fold(0, (n, f) => n + f.size);
   int realTotal = info.program.size;
 
   Set<Info> listed = new Set()..addAll(info.functions)..addAll(info.fields);
-  Set<Info> discovered = new Set();
-  var totalCovered = 0;
-  int totalClasses = 0;
-  helper(f) { totalCovered += f.size; discovered.add(f); f.closures.forEach(helper); }
-  for (LibraryInfo lib in info.libraries) {
-    totalLib += lib.size;
-    lib.topLevelFunctions.forEach(helper);
-    lib.topLevelVariables.forEach(helper);
-    for (var c in lib.classes) {
-      c.functions.forEach(helper);
-      c.fields.forEach(helper);
-    }
-  }
-  print('=> listed: ${listed.length}');
-  print('=> discovered: ${discovered.length}');
-  var diff1 = listed.difference(discovered);
-  var diff2 = discovered.difference(listed);
-  print('=> ${diff1.length}');
-  print('=> ${diff2.length}');
-
-  for (var function in info.functions) {
-    totalFunctions += function.size;
-  }
-
-  for (var field in info.fields) {
-    totalFields += field.size;
-  }
-  print('=> not covered 1: ${diff1.length} (non-zero ${diff1.where((f) => f.size > 0).length})');
-  print('=> not covered 2: ${diff2.length} (non-zero ${diff2.where((f) => f.size > 0).length})');
-  _show('total-lib', totalLib, realTotal);
-  _show('total-function', totalFunctions, realTotal);
-  _show('total-field', totalFields, realTotal);
-  _show('total-covered', totalCovered, realTotal);
-
   var validator = new _SizeValidator();
-  info.accept(validator);
-  _show('valid?', validator._current, realTotal);
-  validator.diffs.forEach((k, v) {
-    if (v > 0) print('+$k: $v');
-    if (v < 0) print('-$k: $v');
-  });
+  print('=> listed: ${listed.length}, discovered: ${validator.discovered.length}');
+  var diff1 = listed.difference(validator.discovered);
+  var diff2 = validator.discovered.difference(listed);
+  if (diff1.length > 0) {
+    print('extra ${diff1.length} in listed (non-zero ${diff1.where((f) => f.size > 0).length})');
+  }
+  if (diff2.length > 0) {
+    print('extra ${diff2.length} in listed (non-zero ${diff2.where((f) => f.size > 0).length})');
+  }
 
-  new File('$filename.t').writeAsStringSync('${validator.allCode}');
+  const sum = '\u03a3';
+  _show('$sum lib', totalLib, realTotal);
+  _show('$sum fn', totalFunctions, realTotal);
+  _show('$sum field', totalFields, realTotal);
+
+  info.accept(validator);
+  _show('$sum reachable fn + field', validator.discoveredSizes, realTotal);
+  var totalReachable = validator._current;
+  var totalMissing = validator.missing.values.fold(0, (a, b) => a + b);
+  _show('$sum reachable from libs', totalReachable, realTotal);
+  _show('$sum diff missing', totalMissing, realTotal);
+  _show('$sum all known', totalReachable + totalMissing, realTotal);
+  validator.missing.forEach((k, v) {
+      //print('- missing $v from $k');
+  });
+  _show('$sum real total', realTotal, realTotal);
+
+  new File('$filename.t').writeAsStringSync('${validator.debugCode}');
 }
 
 _show(String msg, int size, int total) {

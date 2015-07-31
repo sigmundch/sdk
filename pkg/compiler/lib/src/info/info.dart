@@ -60,7 +60,7 @@ abstract class BasicInfo implements Info {
     return res;
   }
 
-  String toString() => '$serializedId: $name';
+  String toString() => '$serializedId $name [$size]';
 }
 
 /// Info associated with elements containing executable code (like fields and
@@ -406,6 +406,15 @@ class ClassInfo extends BasicInfo {
     });
 
   void accept(InfoVisitor visitor) => visitor.visitClass(this);
+}
+
+class ClosureInfo extends BasicInfo {
+  // TODO(sigmund): add information about captured variables.
+  FunctionInfo callInfo;
+  ClosureInfo(
+      {String name, OutputUnitInfo outputUnit, int size: 0, this.callInfo})
+      : super('closure', _ids++, name, outputUnit, size);
+  ClosureInfo._(String serializedId) : super._fromId(serializedId);
 }
 
 class FieldInfo extends BasicInfo with CodeInfo {

@@ -4,6 +4,7 @@
 
 library js;
 
+import 'dart:math' show min, max;
 import 'package:js_ast/js_ast.dart';
 export 'package:js_ast/js_ast.dart';
 
@@ -71,7 +72,15 @@ class Dart2JSJavaScriptPrintingContext implements JavaScriptPrintingContext {
                 int endPosition,
                 int closingPosition) {
     if (monitor != null) {
-      monitor.recordAstSize(node, endPosition - startPosition);
+      if (node is Declaration && node.name.contains('foo')) {
+        var buff = outBuffer.buffer.toString();
+        var start = max(startPosition - 10, 0);
+        var end = min(endPosition + 10, buff.length);
+        print('${node.name} $startPosition $endPosition '
+            '${buff.substring(start, end)}');
+      }
+      monitor.recordAstSize(node, endPosition - startPosition,
+      outBuffer.buffer, startPosition, endPosition);
     }
     codePositionListener.onPositions(
         node, startPosition, endPosition, closingPosition);
