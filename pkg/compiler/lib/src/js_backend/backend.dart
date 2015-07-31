@@ -1449,7 +1449,13 @@ class JavaScriptBackend extends Backend {
       }
     }
 
-    generatedCode[element] = functionCompiler.compile(work);
+    jsAst.Fun code = functionCompiler.compile(work);
+    if (true /* useInstrumentation*/) {
+      code.body.statements.insert(0, js.statement(
+          '__record_use("${element.hashCode}", "${element.name}")'));
+    }
+
+    generatedCode[element] = code;
     return const WorldImpact();
   }
 

@@ -1417,6 +1417,21 @@ class Emitter implements js_emitter.Emitter {
             };
        }
 
+       if (#hasInstrumentation) {
+         var __record_buffer = []; // TODO(sigmund): define as a proper global.
+         function __record_use(id, name) {
+           if (__record_buffer.length == 0) {
+             window.setTimeout(function () {
+               var xhr = new XMLHttpRequest();
+               xhr.open('POST', #instrumentationUri);
+               xhr.send(__record_buffer);
+               __record_buffer = [];
+             }, 1000);
+           }
+           __record_buffer.push([id, name]);
+         }
+       }
+
        if (#isProgramSplit) {
          /// We collect all the global state, so it can be passed to the
          /// initializer of deferred files.
@@ -1509,6 +1524,8 @@ class Emitter implements js_emitter.Emitter {
     """, {
       "disableVariableRenaming": js.comment("/* ::norenaming:: */"),
       "hasIncrementalSupport": compiler.hasIncrementalSupport,
+      "hasInstrumentation": true, // TODO(sigmund): add flag
+      "instrumentationUri": "/aw/_/resources/coverage", // # TODO(sigmund): add flag
       "helper": js('this.#', [namer.incrementalHelperName]),
       "schemaChange": buildSchemaChangeFunction(),
       "addMethod": buildIncrementalAddMethod(),
