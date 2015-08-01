@@ -72,6 +72,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     int size = compiler.dumpInfoTask.sizeOf(element);
     LibraryInfo info =
       new LibraryInfo(libname, element.canonicalUri, null, size);
+    _elementToInfo[element] = info;
 
     LibraryElement realElement = element.isPatched ? element.patch : element;
     realElement.forEachLocalMember((Element member) {
@@ -91,7 +92,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     });
 
     if (info.isEmpty && !shouldKeep(element)) return null;
-    _record(element, info, result.libraries);
+    result.libraries.add(info);
     return info;
   }
 
@@ -154,6 +155,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
         isAbstract: element.isAbstract,
         outputUnit: _unitInfoForElement(element));
     _elementToInfo[element] = classInfo;
+    classInfo.parent = _elementToInfo[element.library];
 
     int size = compiler.dumpInfoTask.sizeOf(element);
     bool show = false; //size > 0 && !element.library.isPlatformLibrary;
@@ -164,9 +166,11 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
       if (info == null) return;
       if (info is FieldInfo) {
         classInfo.fields.add(info);
+        info.parent = classInfo;
       } else {
         assert(info is FunctionInfo);
         classInfo.functions.add(info);
+        info.parent = classInfo;
       }
 
       // Closures are placed in the library namespace, but we want to attribute
@@ -289,13 +293,12 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
       for (Element closure in member.nestedClosures) {
         Info child = this.process(closure);
         if (child != null) {
-          ClassInfo parent = this.process(closure.enclosingElement);
+          BasicInfo parent = this.process(closure.enclosingElement);
           if (parent != null) {
             child.name = "${parent.name}.${child.name}";
           }
-          assert(parent == info);
-
           nestedClosures.add(child);
+          child.parent = parent;
           size += child.size;
         }
       }

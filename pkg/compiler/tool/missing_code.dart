@@ -203,10 +203,24 @@ main(args) {
 
   var count = validator.stack.last._count;
   var live = validator.stack.last._liveCount;
-  validator.dead.forEach((i) => print(i));
+  validator.dead.forEach(_longNameAndSize);
   _show('# all live', live, count);
 
   new File('$filename.t').writeAsStringSync('${validator.debugCode}');
+}
+
+_longNameAndSize(CodeInfo info) {
+  var sb = new StringBuffer();
+  helper(i) {
+    if (i.parent == null) {
+      sb.write('${i.name}');
+    } else {
+      helper(i.parent);
+      sb.write('> ${i.name}');
+    }
+  }
+  helper(info);
+  print('$sb ${info.size}');
 }
 
 _show(String msg, int size, int total) {

@@ -20,6 +20,8 @@ abstract class Info {
   /// An unique id used to create references to this info.
   int get id;
 
+  Info parent;
+
   /// Serializes the information into a JSON format.
   Map toJson();
 
@@ -39,6 +41,7 @@ abstract class BasicInfo implements Info {
   // TODO(sigmund): unify all ids.
   String coverageId;
 
+  Info parent;
 
   /// Bytes used in the generated code for the corresponding element.
   int size;
@@ -64,6 +67,7 @@ abstract class BasicInfo implements Info {
     // (most code is by default in the main output unit)
     if (outputUnit != null) res['outputUnit'] = outputUnit.serializedId;
     if (coverageId != null) res['coverageId'] = coverageId;
+    if (parent != null) res['parent'] = parent.serializedId;
     return res;
   }
 
@@ -246,6 +250,7 @@ class _ParseHelper {
   LibraryInfo parseLibrary(Map json) {
     var result = parseId(json['id'])
         ..name = json['name']
+        ..parent = parseId(json['parent'])
         ..uri = Uri.parse(json['canonicalUri'])
         ..outputUnit = parseId(json['outputUnit'])
         ..size = json['size'];
@@ -268,6 +273,7 @@ class _ParseHelper {
   ClassInfo parseClass(Map json) {
     var result = parseId(json['id'])
         ..name = json['name']
+        ..parent = parseId(json['parent'])
         ..outputUnit = parseId(json['outputUnit'])
         ..size = json['size']
         ..isAbstract = json['modifiers']['abstract'] == true;
@@ -286,6 +292,7 @@ class _ParseHelper {
   FieldInfo parseField(Map json) {
     return parseId(json['id'])
       ..name = json['name']
+      ..parent = parseId(json['parent'])
       ..coverageId = json['coverageId']
       ..outputUnit = parseId(json['outputUnit'])
       ..size = json['size']
@@ -297,6 +304,7 @@ class _ParseHelper {
 
   TypedefInfo parseTypedef(Map json) => parseId(json['id'])
       ..name = json['name']
+      ..parent = parseId(json['parent'])
       ..type = json['type']
       ..size = 0;
 
@@ -305,6 +313,7 @@ class _ParseHelper {
 
   FunctionInfo parseFunction(Map json) {
     return parseId(json['id'])
+      ..parent = parseId(json['parent'])
       ..name = json['name']
       ..coverageId = json['coverageId']
       ..outputUnit = parseId(json['outputUnit'])
