@@ -35,6 +35,11 @@ abstract class BasicInfo implements Info {
   final String kind;
   final int id;
 
+  /// Id used by the compiler when instrumenting code for code coverage.
+  // TODO(sigmund): unify all ids.
+  String coverageId;
+
+
   /// Bytes used in the generated code for the corresponding element.
   int size;
 
@@ -46,7 +51,8 @@ abstract class BasicInfo implements Info {
   /// is generated.
   OutputUnitInfo outputUnit;
 
-  BasicInfo(this.kind, this.id, this.name, this.outputUnit, this.size);
+  BasicInfo(this.kind, this.id, this.name, this.outputUnit, this.size,
+      this.coverageId);
 
   BasicInfo._fromId(String serializedId)
      : kind = serializedId.substring(0, serializedId.indexOf('/')),
@@ -57,6 +63,7 @@ abstract class BasicInfo implements Info {
     // TODO(sigmund): omit this also when outputUnit.id == 0
     // (most code is by default in the main output unit)
     if (outputUnit != null) res['outputUnit'] = outputUnit.serializedId;
+    if (coverageId != null) res['coverageId'] = coverageId;
     return res;
   }
 
@@ -66,7 +73,6 @@ abstract class BasicInfo implements Info {
 /// Info associated with elements containing executable code (like fields and
 /// methods)
 abstract class CodeInfo implements Info {
-
   /// How does this function or field depend on others.
   final List<DependencyInfo> uses = <DependencyInfo>[];
 }
@@ -280,6 +286,7 @@ class _ParseHelper {
   FieldInfo parseField(Map json) {
     return parseId(json['id'])
       ..name = json['name']
+      ..coverageId = json['coverageId']
       ..outputUnit = parseId(json['outputUnit'])
       ..size = json['size']
       ..type = json['type']
@@ -299,6 +306,7 @@ class _ParseHelper {
   FunctionInfo parseFunction(Map json) {
     return parseId(json['id'])
       ..name = json['name']
+      ..coverageId = json['coverageId']
       ..outputUnit = parseId(json['outputUnit'])
       ..size = json['size']
       ..type = json['type']
@@ -355,7 +363,7 @@ class LibraryInfo extends BasicInfo {
       topLevelFunctions.isEmpty && topLevelVariables.isEmpty && classes.isEmpty;
 
   LibraryInfo(String name, this.uri, OutputUnitInfo outputUnit, int size)
-      : super('library', _id++, name, outputUnit, size);
+      : super('library', _id++, name, outputUnit, size, null);
 
   LibraryInfo._(String serializedId) : super._fromId(serializedId);
 
@@ -375,7 +383,7 @@ class LibraryInfo extends BasicInfo {
 class OutputUnitInfo extends BasicInfo {
   static int _ids = 0;
   OutputUnitInfo(String name, int size)
-      : super('outputUnit', _ids++, name, null, size);
+      : super('outputUnit', _ids++, name, null, size, null);
 
   OutputUnitInfo._(String serializedId) : super._fromId(serializedId);
 
@@ -392,7 +400,7 @@ class ClassInfo extends BasicInfo {
 
   ClassInfo(
       {String name, this.isAbstract, OutputUnitInfo outputUnit, int size: 0})
-      : super('class', _ids++, name, outputUnit, size);
+      : super('class', _ids++, name, outputUnit, size, null);
 
   ClassInfo._(String serializedId) : super._fromId(serializedId);
 
@@ -413,7 +421,7 @@ class ClosureInfo extends BasicInfo {
   FunctionInfo callInfo;
   ClosureInfo(
       {String name, OutputUnitInfo outputUnit, int size: 0, this.callInfo})
-      : super('closure', _ids++, name, outputUnit, size);
+      : super('closure', _ids++, name, outputUnit, size, null);
   ClosureInfo._(String serializedId) : super._fromId(serializedId);
 }
 
@@ -426,13 +434,14 @@ class FieldInfo extends BasicInfo with CodeInfo {
   static int _ids = 0;
   FieldInfo(
       {String name,
+      String coverageId,
       int size: 0,
       this.type,
       this.inferredType,
       this.closures,
       this.code,
       OutputUnitInfo outputUnit})
-      : super('field', _ids++, name, outputUnit, size);
+      : super('field', _ids++, name, outputUnit, size, coverageId);
 
   FieldInfo._(String serializedId) : super._fromId(serializedId);
 
@@ -452,7 +461,7 @@ class TypedefInfo extends BasicInfo {
 
   static int _ids = 0;
   TypedefInfo(String name, this.type, OutputUnitInfo outputUnit)
-      : super('typedef', _ids++, name, outputUnit, 0);
+      : super('typedef', _ids++, name, outputUnit, 0, null);
 
   TypedefInfo._(String serializedId) : super._fromId(serializedId);
 
@@ -501,6 +510,7 @@ class FunctionInfo extends BasicInfo with CodeInfo {
 
   FunctionInfo(
       {String name,
+      String coverageId,
       OutputUnitInfo outputUnit,
       int size: 0,
       this.functionKind,
@@ -513,7 +523,7 @@ class FunctionInfo extends BasicInfo with CodeInfo {
       this.sideEffects,
       this.inlinedCount,
       this.code})
-      : super('function', _ids++, name, outputUnit, size);
+      : super('function', _ids++, name, outputUnit, size, coverageId);
 
   FunctionInfo._(String serializedId) : super._fromId(serializedId);
 
