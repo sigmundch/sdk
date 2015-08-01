@@ -1451,6 +1451,8 @@ class JavaScriptBackend extends Backend {
 
     jsAst.Fun code = functionCompiler.compile(work);
     if (true /* useInstrumentation*/) {
+      // TODO(sigmund): dot his properly to support inlining too? maybe do it
+      // before emitting
       code.body.statements.insert(0, js.statement(
           '__record_use("${element.hashCode}", "${element.name}")'));
     }

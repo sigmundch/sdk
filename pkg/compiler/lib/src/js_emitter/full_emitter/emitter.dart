@@ -1423,8 +1423,8 @@ class Emitter implements js_emitter.Emitter {
            if (__record_buffer.length == 0) {
              window.setTimeout(function () {
                var xhr = new XMLHttpRequest();
-               xhr.open('POST', #instrumentationUri);
-               xhr.send(__record_buffer);
+               xhr.open("POST", "/coverage" /*url-prefix*/);
+               xhr.send(JSON.stringify(__record_buffer));
                __record_buffer = [];
              }, 1000);
            }
@@ -1525,7 +1525,6 @@ class Emitter implements js_emitter.Emitter {
       "disableVariableRenaming": js.comment("/* ::norenaming:: */"),
       "hasIncrementalSupport": compiler.hasIncrementalSupport,
       "hasInstrumentation": true, // TODO(sigmund): add flag
-      "instrumentationUri": "/aw/_/resources/coverage", // # TODO(sigmund): add flag
       "helper": js('this.#', [namer.incrementalHelperName]),
       "schemaChange": buildSchemaChangeFunction(),
       "addMethod": buildIncrementalAddMethod(),
