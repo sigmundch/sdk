@@ -66,7 +66,7 @@ class _Server {
   /// Data received so far. The data is just an array of pairs, showing the
   /// hashCode and name of the element used. This can be later cross-checked
   /// against dump-info data.
-  List data = [];
+  Map data = {};
 
   _Server(this.hostname, this.port, String jsPath, this.outPath, String prefix)
       : jsPath = jsPath,
@@ -99,13 +99,21 @@ class _Server {
       if (request.method == 'GET') {
         return new shelf.Response.ok(JSON.encode(data), headers: TEXT_HEADERS);
       } else if (request.method == 'POST') {
-        data.addAll(JSON.decode(await request.readAsString()));
-        _enqueueSave();
+        _record(JSON.decode(await request.readAsString()));
         return new shelf.Response.ok("Thanks!");
       }
     } else {
       return new shelf.Response.notFound('Not found: "$urlPath"');
     }
+  }
+
+  _record(List entries) {
+    for (var entry in entries) {
+      var id = entry[0];
+      data.putIfAbsent(id, () => {'name': entry[1], 'count': 0});
+      data[id]['count']++;
+    }
+    _enqueueSave();
   }
 
   bool _savePending = false;
