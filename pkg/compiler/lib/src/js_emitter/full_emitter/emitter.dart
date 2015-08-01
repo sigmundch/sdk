@@ -1423,7 +1423,7 @@ class Emitter implements js_emitter.Emitter {
            if (__record_buffer.length == 0) {
              window.setTimeout(function () {
                var xhr = new XMLHttpRequest();
-               xhr.open("POST", "/coverage" /*url-prefix*/);
+               xhr.open("POST", "/coverage_uri_to_amend_by_server");
                xhr.send(JSON.stringify(__record_buffer));
                __record_buffer = [];
              }, 1000);

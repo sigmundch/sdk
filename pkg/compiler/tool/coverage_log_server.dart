@@ -68,36 +68,34 @@ class _Server {
   /// against dump-info data.
   List data = [];
 
-  _Server(this.hostname, this.port, this.jsPath, this.outPath, String prefix)
-      : prefix = prefix.endsWith('/') ? prefix : '$prefix/';
+  _Server(this.hostname, this.port, String jsPath, this.outPath, String prefix)
+      : jsPath = jsPath,
+        jsCode = _adjustRequestUrl(new File(jsPath).readAsStringSync(), prefix),
+        prefix = _normalize(prefix);
 
   run() async {
-    jsCode = await new File(jsPath).readAsString();
-    if (prefix != '') {
-      jsCode = jsCode.replaceFirst(
-          // The extra text before/after is just to have less chances of
-          // replacing something else.
-          '"POST", "/coverage" /*url-prefix*/',
-          '"POST", "$prefix/coverage" /*url-prefix updated!*/');
-    }
     await shelf.serve(_handler, hostname, port);
-    var urlBase = "http://$hostname:$port${prefix == '/' ? '/' : '/$prefix/'}";
+    var urlBase = "http://$hostname:$port${prefix == '' ? '/' : '/$prefix/'}";
     print("Server is listening\n"
         "  - test html page: $urlBase\n"
         "  - js code: $urlBase${path.basename(jsPath)}\n"
         "  - coverage reporting: ${urlBase}coverage\n");
   }
 
+  _expectedPath(String tail) => prefix == '' ? tail : '$prefix/$tail';
+
   _handler(shelf.Request request) async {
-    var urlPath = '/${request.url.path}';
+    var urlPath = request.url.path;
     print('received request: $urlPath');
     var baseJsName = path.basename(jsPath);
-    if (urlPath == '$prefix' || urlPath == '$prefix/') {
+    if (urlPath == '$prefix') {
+      return new shelf.Response.found('/$prefix/'); // redirect
+    } else if (urlPath == '$prefix/') {
       return new shelf.Response.ok('<html><script src="$baseJsName"></script>',
           headers: HTML_HEADERS);
-    } else if (urlPath == '$prefix$baseJsName') {
+    } else if (urlPath == _expectedPath(baseJsName)) {
       return new shelf.Response.ok(jsCode, headers: JS_HEADERS);
-    } else if (urlPath == '${prefix}coverage') {
+    } else if (urlPath == _expectedPath('coverage')) {
       if (request.method == 'GET') {
         return new shelf.Response.ok(JSON.encode(data), headers: TEXT_HEADERS);
       } else if (request.method == 'POST') {
@@ -119,6 +117,23 @@ class _Server {
       _savePending = false;
     }
   }
+}
+
+/// Removes leading and trailing slashes of [uriPath].
+_normalize(String uriPath) {
+  if (uriPath.startsWith('/')) uriPath = uriPath.subtring(1);
+  if (uriPath.endsWith('/')) uriPath = uriPath.subtring(0, uriPath.length - 1);
+  return uriPath;
+}
+
+
+_adjustRequestUrl(String code, String prefix) {
+  if (prefix != '') {
+    code = code.replaceFirst(
+        '"/coverage_uri_to_amend_by_server"',
+        '"/$prefix/coverage" /*url-prefix updated!*/');
+  }
+  return code;
 }
 
 const HTML_HEADERS = const {'content-type': 'text/html'};
