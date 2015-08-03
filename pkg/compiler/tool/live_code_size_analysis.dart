@@ -2,8 +2,20 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-// TODO(sigmund): combine with size_info.dart
-library compiler.tool.live_info;
+/// Command-line tool presenting combined information from dump-info and
+/// coverage data. This tool requires two input files an `.info.json` and a
+/// `.coverage.json` file. To produce this files you need to:
+///   * compile an app with dart2js using --dump-info and defining the
+///   Dart environment --instrumentForCoverage=true:
+///
+///      dart -DinstrumentForCoverage=true dart2js.dart --dump-info main.dart
+///
+///   * launch the coverage server to serve up the Javascript code in your app
+///
+///      dart tool/coverage_log_server.dart main.dart.js
+///      # run your server and proxy JS and /coverage requests to the log
+///      server.
+library compiler.tool.live_code_size_analysis;
 
 import 'dart:convert';
 import 'dart:io';
@@ -12,7 +24,7 @@ import 'package:compiler/src/info/info.dart';
 
 main(args) {
   if (args.length < 0) {
-    print('usage: dart tool/size_info.dart path-to-info.json');
+    print('usage: dart tool/live_code_analysis.dart path-to-info.json');
     exit(1);
   }
 
@@ -31,10 +43,10 @@ main(args) {
   int realTotal = info.program.size;
 
   Set<Info> listed = new Set()..addAll(info.functions)..addAll(info.fields);
-  var validator = new _SizeValidator(coverage);
-  print('=> listed: ${listed.length}, discovered: ${validator.discovered.length}');
-  var diff1 = listed.difference(validator.discovered);
-  var diff2 = validator.discovered.difference(listed);
+  var tracker = new _SizeTracker(coverage);
+  print('=> listed: ${listed.length}, discovered: ${tracker.discovered.length}');
+  var diff1 = listed.difference(tracker.discovered);
+  var diff2 = tracker.discovered.difference(listed);
   if (diff1.length > 0) {
     print('extra ${diff1.length} in listed (non-zero ${diff1.where((f) => f.size > 0).length})');
   }
@@ -47,28 +59,28 @@ main(args) {
   _show('$sum fn', totalFunctions, realTotal);
   _show('$sum field', totalFields, realTotal);
 
-  info.accept(validator);
-  _show('$sum reachable fn + field', validator.discoveredSizes, realTotal);
-  var totalReachable = validator.stack.last._totalSize;
-  var totalUsed = validator.stack.last._liveSize;
-  var totalMissing = validator.missing.values.fold(0, (a, b) => a + b);
+  info.accept(tracker);
+  _show('$sum reachable fn + field', tracker.discoveredSizes, realTotal);
+  var totalReachable = tracker.stack.last._totalSize;
+  var totalUsed = tracker.stack.last._liveSize;
+  var totalMissing = tracker.missing.values.fold(0, (a, b) => a + b);
   _show('$sum reachable from libs', totalReachable, realTotal);
   _show('$sum diff missing', totalMissing, realTotal);
   _show('$sum all known', totalReachable + totalMissing, realTotal);
   _show('$sum all live', totalUsed, realTotal);
 
-  // validator.missing.forEach((k, v) { print('- missing $v from $k'); });
+  // tracker.missing.forEach((k, v) { print('- missing $v from $k'); });
   _show('$sum real total', realTotal, realTotal);
 
 
-  var count = validator.stack.last._count;
-  var live = validator.stack.last._liveCount;
+  var count = tracker.stack.last._count;
+  var live = tracker.stack.last._liveCount;
   _show('# all live', live, count);
-  var unused = validator.unused;
+  var unused = tracker.unused;
   unused.sort((a, b) => a.size - b.size);
   unused.forEach(_longNameAndSize);
 
-  new File('$filename.t').writeAsStringSync('${validator.debugCode}');
+  new File('$filename.t').writeAsStringSync('${tracker.debugCode}');
 }
 
 class _State {
@@ -79,13 +91,13 @@ class _State {
   int _liveSize = 0;
 }
 
-class _SizeValidator extends RecursiveInfoVisitor {
+class _SizeTracker extends RecursiveInfoVisitor {
   /// Coverage data. Currently the format is
   ///   itemId -> {name: "...", count: n}
   // TODO(sigmund): add a type to represent this data.
   final Map<String, Map> coverage;
 
-  _SizeValidator(this.coverage);
+  _SizeTracker(this.coverage);
 
   final Map<Info, int> missing = {};
   final List unused = [];
