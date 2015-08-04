@@ -1524,7 +1524,8 @@ class Emitter implements js_emitter.Emitter {
     """, {
       "disableVariableRenaming": js.comment("/* ::norenaming:: */"),
       "hasIncrementalSupport": compiler.hasIncrementalSupport,
-      "hasInstrumentation": true, // TODO(sigmund): add flag
+      // TODO(sigmund): add flag
+      "hasInstrumentation": const bool.fromEnvironment('instrumentForCoverage'),
       "helper": js('this.#', [namer.incrementalHelperName]),
       "schemaChange": buildSchemaChangeFunction(),
       "addMethod": buildIncrementalAddMethod(),

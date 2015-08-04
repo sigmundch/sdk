@@ -115,7 +115,7 @@ class ElementInfoCollector extends BaseElementVisitor<Info, dynamic> {
     int size = compiler.dumpInfoTask.sizeOf(element);
     String code;
     StringBuffer emittedCode = compiler.dumpInfoTask.codeOf(element);
-    if ('$element'.contains('foo')) print('$element => $emittedCode');
+    //if ('$element'.contains('foo')) print('$element => $emittedCode');
     if (emittedCode != null) {
       size += emittedCode.length;
       code = emittedCode.toString();
@@ -431,10 +431,10 @@ class DumpInfoTask extends CompilerTask {
   // pretty-printed into the output buffer.
   void recordAstSize(jsAst.Node node, int size,
       StringBuffer codeBuffer, int start, int end) {
-    var e = _nodeToElement[node];
-    bool show = e != null && '${e.name}'.endsWith('js_dart2js.dart');
-    //bool show = size != code.length; //false; //e != null && size > 0 && !e.library.isPlatformLibrary;
-    if (show) print('$e: record size> ${node} - $size ${codeBuffer.toString().substring(start, end)}');
+    //var e = _nodeToElement[node];
+    //bool show = e != null && '${e.name}'.endsWith('js_dart2js.dart');
+    ////bool show = size != code.length; //false; //e != null && size > 0 && !e.library.isPlatformLibrary;
+    //if (show) print('$e: record size> ${node} - $size ${codeBuffer.toString().substring(start, end)}');
     if (isTracking(node)) {
       //TODO: should I be incrementing here instead?
       _nodeToSize[node] = size;

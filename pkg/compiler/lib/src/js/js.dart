@@ -72,13 +72,13 @@ class Dart2JSJavaScriptPrintingContext implements JavaScriptPrintingContext {
                 int endPosition,
                 int closingPosition) {
     if (monitor != null) {
-      if (node is Declaration && node.name.contains('foo')) {
-        var buff = outBuffer.buffer.toString();
-        var start = max(startPosition - 10, 0);
-        var end = min(endPosition + 10, buff.length);
-        print('${node.name} $startPosition $endPosition '
-            '${buff.substring(start, end)}');
-      }
+      //if (node is Declaration && node.name.contains('foo')) {
+      //  var buff = outBuffer.buffer.toString();
+      //  var start = max(startPosition - 10, 0);
+      //  var end = min(endPosition + 10, buff.length);
+      //  print('${node.name} $startPosition $endPosition '
+      //      '${buff.substring(start, end)}');
+      //}
       monitor.recordAstSize(node, endPosition - startPosition,
       outBuffer.buffer, startPosition, endPosition);
     }

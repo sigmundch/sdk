@@ -2,8 +2,17 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-/// Server component to display [GlobalResult]s using a web app.
-library compiler.tool.stats.server;
+/// A tool to gather coverage data from an app generated with dart2js.
+/// This tool starts a server that answers to mainly 2 requests:
+///    * a GET request to retrieve the application
+///    * POST requests to record coverage data.
+///
+/// It is intended to be used as follows:
+///    * generate an app by running dart2js with the environment boolean
+///      -DinstrumentForCoverage=true provided to the vm.
+///    * start this server, and proxy requests from your normal frontend
+///      server to this one.
+library compiler.tool.coverage_log_server;
 
 import 'dart:convert';
 import 'dart:io';
