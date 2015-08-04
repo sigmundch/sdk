@@ -13,7 +13,7 @@ import 'package:args/args.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf;
 
-const _DEFAULT_OUT_TEMPLATE = '<dart2js-out-file>.coverage';
+const _DEFAULT_OUT_TEMPLATE = '<dart2js-out-file>.coverage.json';
 
 main(argv) async {
   var parser = new ArgParser()
@@ -37,7 +37,7 @@ main(argv) async {
 
   var jsPath = args.rest[0];
   var outPath = args['out'];
-  if (outPath == _DEFAULT_OUT_TEMPLATE) outPath = '$jsPath.coverage';
+  if (outPath == _DEFAULT_OUT_TEMPLATE) outPath = '$jsPath.coverage.json';
   var server = new _Server(args['host'], int.parse(args['port']), jsPath,
       outPath, args['uri-prefix']);
   await server.run();
