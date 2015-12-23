@@ -66,22 +66,22 @@ class TypeInformationSystem extends TypeSystem<TINode> {
   final Compiler compiler;
   final ClassWorld classWorld;
 
-  /// [ElementTypeInformation]s for elements.
+  /// [TIElement]s for elements.
   final Map<Element, TINode> typeInformations =
       new Map<Element, TINode>();
 
-  /// [ListTypeInformation] for allocated lists.
+  /// [TIList] for allocated lists.
   final Map<ast.Node, TINode> allocatedLists =
       new Map<ast.Node, TINode>();
 
-  /// [MapTypeInformation] for allocated Maps.
+  /// [TIMap] for allocated Maps.
   final Map<ast.Node, TINode> allocatedMaps =
       new Map<ast.Node, TINode>();
 
   /// Closures found during the analysis.
   final Set<TINode> allocatedClosures = new Set<TINode>();
 
-  /// Cache of [ConcreteTypeInformation].
+  /// Cache of [TIConcrete].
   final Map<TypeMask, TINode> concreteTypes =
       new Map<TypeMask, TINode>();
 
@@ -97,8 +97,8 @@ class TypeInformationSystem extends TypeSystem<TINode> {
 
   /// Used to group [TINode] nodes by the element that triggered their
   /// creation.
-  MemberTypeInformation _currentMember = null;
-  MemberTypeInformation get currentMember => _currentMember;
+  TIMember _currentMember = null;
+  TIMember get currentMember => _currentMember;
 
   void withMember(MemberElement element, action) {
     assert(invariant(element, _currentMember == null,
@@ -247,12 +247,12 @@ class TypeInformationSystem extends TypeSystem<TINode> {
   TINode nonNullEmptyType;
 
   TINode stringLiteralType(ast.DartString value) {
-    return new StringLiteralTypeInformation(
+    return new TIStringLiteral(
         value, compiler.typesTask.stringType);
   }
 
   TINode boolLiteralType(ast.LiteralBool value) {
-    return new BoolLiteralTypeInformation(value, compiler.typesTask.boolType);
+    return new TIBoolLiteral(value, compiler.typesTask.boolType);
   }
 
   TINode computeLUB(TINode firstType,
@@ -293,7 +293,7 @@ class TypeInformationSystem extends TypeSystem<TINode> {
       return receiver;
     }
     assert(TypeMask.assertIsNormalized(otherType, classWorld));
-    TINode newType = new NarrowTypeInformation(receiver, otherType);
+    TINode newType = new TINarrow(receiver, otherType);
     allocatedTypes.add(newType);
     return newType;
   }
@@ -321,7 +321,7 @@ class TypeInformationSystem extends TypeSystem<TINode> {
       return type;
     } else {
       assert(TypeMask.assertIsNormalized(otherType, classWorld));
-      TINode newType = new NarrowTypeInformation(type, otherType);
+      TINode newType = new TINarrow(type, otherType);
       allocatedTypes.add(newType);
       return newType;
     }
@@ -332,27 +332,27 @@ class TypeInformationSystem extends TypeSystem<TINode> {
       return type;
     }
     TINode newType =
-        new NarrowTypeInformation(type, dynamicType.type.nonNullable());
+        new TINarrow(type, dynamicType.type.nonNullable());
     allocatedTypes.add(newType);
     return newType;
   }
 
-  ElementTypeInformation getInferredTypeOf(Element element) {
+  TIElement getInferredTypeOf(Element element) {
     element = element.implementation;
     return typeInformations.putIfAbsent(element, () {
-      return new ElementTypeInformation(element, this);
+      return new TIElement(element, this);
     });
   }
 
-  ConcreteTypeInformation getConcreteTypeFor(TypeMask mask) {
+  TIConcrete getConcreteTypeFor(TypeMask mask) {
     assert(mask != null);
     return concreteTypes.putIfAbsent(mask, () {
-      return new ConcreteTypeInformation(mask);
+      return new TIConcrete(mask);
     });
   }
 
   String getInferredSignatureOf(FunctionElement function) {
-    ElementTypeInformation info = getInferredTypeOf(function);
+    TIElement info = getInferredTypeOf(function);
     FunctionElement impl = function.implementation;
     FunctionSignature signature = impl.functionSignature;
     var res = "";
@@ -407,23 +407,23 @@ class TypeInformationSystem extends TypeSystem<TINode> {
         : dynamicType.type;
     ContainerTypeMask mask = new ContainerTypeMask(
         type.type, node, enclosing, elementTypeMask, inferredLength);
-    ElementInContainerTypeInformation element =
-        new ElementInContainerTypeInformation(currentMember, elementType);
+    TIElementInContainer element =
+        new TIElementInContainer(currentMember, elementType);
     element.inferred = isElementInferred;
 
     allocatedTypes.add(element);
     return allocatedLists[node] =
-        new ListTypeInformation(currentMember, mask, element, length);
+        new TIList(currentMember, mask, element, length);
   }
 
   TINode allocateClosure(ast.Node node, Element element) {
     TINode result =
-        new ClosureTypeInformation(currentMember, node, element);
+        new TIClosure(currentMember, node, element);
     allocatedClosures.add(result);
     return result;
   }
 
-  TINode allocateMap(ConcreteTypeInformation type,
+  TINode allocateMap(TIConcrete type,
                               ast.Node node,
                               Element element,
                               [List<TINode> keyTypes,
@@ -447,14 +447,14 @@ class TypeInformationSystem extends TypeSystem<TINode> {
                                        valueType);
 
     TINode keyTypeInfo =
-        new KeyInMapTypeInformation(currentMember, null);
+        new TIKeyInMap(currentMember, null);
     TINode valueTypeInfo =
-        new ValueInMapTypeInformation(currentMember, null);
+        new TIValueInMap(currentMember, null);
     allocatedTypes.add(keyTypeInfo);
     allocatedTypes.add(valueTypeInfo);
 
-    MapTypeInformation map =
-        new MapTypeInformation(currentMember, mask, keyTypeInfo, valueTypeInfo);
+    TIMap map =
+        new TIMap(currentMember, mask, keyTypeInfo, valueTypeInfo);
 
     for (int i = 0; i < keyTypes.length; ++i) {
       TINode newType =
@@ -479,32 +479,32 @@ class TypeInformationSystem extends TypeSystem<TINode> {
 
   TINode allocateDiamondPhi(TINode firstInput,
                                      TINode secondInput) {
-    PhiElementTypeInformation result =
-        new PhiElementTypeInformation(currentMember, null, false, null);
+    TIPhiElement result =
+        new TIPhiElement(currentMember, null, false, null);
     result.addAssignment(firstInput);
     result.addAssignment(secondInput);
     allocatedTypes.add(result);
     return result;
   }
 
-  PhiElementTypeInformation _addPhi(ast.Node node,
+  TIPhiElement _addPhi(ast.Node node,
                                     Local variable,
                                     inputType,
                                     bool isLoop) {
-    PhiElementTypeInformation result =
-        new PhiElementTypeInformation(currentMember, node, isLoop, variable);
+    TIPhiElement result =
+        new TIPhiElement(currentMember, node, isLoop, variable);
     allocatedTypes.add(result);
     result.addAssignment(inputType);
     return result;
   }
 
-  PhiElementTypeInformation allocatePhi(ast.Node node,
+  TIPhiElement allocatePhi(ast.Node node,
                                         Local variable,
                                         inputType) {
     // Check if [inputType] is a phi for a local updated in
     // the try/catch block [node]. If it is, no need to allocate a new
     // phi.
-    if (inputType is PhiElementTypeInformation &&
+    if (inputType is TIPhiElement &&
         inputType.branchNode == node &&
         inputType.branchNode is ast.TryStatement) {
       return inputType;
@@ -512,7 +512,7 @@ class TypeInformationSystem extends TypeSystem<TINode> {
     return _addPhi(node, variable, inputType, false);
   }
 
-  PhiElementTypeInformation allocateLoopPhi(ast.Node node,
+  TIPhiElement allocateLoopPhi(ast.Node node,
                                             Local variable,
                                             inputType) {
     return _addPhi(node, variable, inputType, true);
@@ -520,14 +520,14 @@ class TypeInformationSystem extends TypeSystem<TINode> {
 
   TINode simplifyPhi(ast.Node node,
                               Local variable,
-                              PhiElementTypeInformation phiType) {
+                              TIPhiElement phiType) {
     assert(phiType.branchNode == node);
     if (phiType.assignments.length == 1) return phiType.assignments.first;
     return phiType;
   }
 
-  PhiElementTypeInformation addPhiInput(Local variable,
-                                        PhiElementTypeInformation phiType,
+  TIPhiElement addPhiInput(Local variable,
+                                        TIPhiElement phiType,
                                         TINode newType) {
     phiType.addAssignment(newType);
     return phiType;
@@ -604,8 +604,8 @@ class TypeGraphInferrerEngine
     extends InferrerEngine<TINode, TypeInformationSystem> {
   final Map<Element, TINode> defaultTypeOfParameter =
       new Map<Element, TINode>();
-  final List<CallSiteTypeInformation> allocatedCalls =
-      <CallSiteTypeInformation>[];
+  final List<TICallSite> allocatedCalls =
+      <TICallSite>[];
   final WorkQueue workQueue = new WorkQueue();
   final Element mainElement;
   final Set<Element> analyzedElements = new Set<Element>();
@@ -653,7 +653,7 @@ class TypeGraphInferrerEngine
            selector.isIndex;
   }
 
-  void analyzeListAndEnqueue(ListTypeInformation info) {
+  void analyzeListAndEnqueue(TIList info) {
     if (info.analyzed) return;
     info.analyzed = true;
 
@@ -673,7 +673,7 @@ class TypeGraphInferrerEngine
     workQueue.add(info.elementType);
   }
 
-  void analyzeMapAndEnqueue(MapTypeInformation info) {
+  void analyzeMapAndEnqueue(TIMap info) {
     if (info.analyzed) return;
     info.analyzed = true;
     MapTracerVisitor tracer = new MapTracerVisitor(info, this);
@@ -709,7 +709,7 @@ class TypeGraphInferrerEngine
         reporter.log('Added $addedInGraph elements in inferencing graph.');
         compiler.progress.reset();
       }
-      // This also forces the creation of the [ElementTypeInformation] to ensure
+      // This also forces the creation of the [TIElement] to ensure
       // it is in the graph.
       types.withMember(element, () => analyze(element, null));
     });
@@ -719,13 +719,13 @@ class TypeGraphInferrerEngine
     refine();
 
     // Try to infer element types of lists and compute their escape information.
-    types.allocatedLists.values.forEach((ListTypeInformation info) {
+    types.allocatedLists.values.forEach((TIList info) {
       analyzeListAndEnqueue(info);
     });
 
     // Try to infer the key and value types for maps and compute the values'
     // escape information.
-    types.allocatedMaps.values.forEach((MapTypeInformation info) {
+    types.allocatedMaps.values.forEach((TIMap info) {
       analyzeMapAndEnqueue(info);
     });
 
@@ -768,11 +768,11 @@ class TypeGraphInferrerEngine
         });
       }
 
-      if (info is ClosureTypeInformation) {
+      if (info is TIClosure) {
         Iterable<FunctionElement> elements = [info.element];
         trace(elements, new ClosureTracerVisitor(elements, info, this));
-      } else if (info is CallSiteTypeInformation) {
-        if (info is StaticCallSiteTypeInformation &&
+      } else if (info is TICallSite) {
+        if (info is TIStaticCallSite &&
             info.selector != null &&
             info.selector.isCall) {
           // This is a constructor call to a class with a call method. So we
@@ -793,7 +793,7 @@ class TypeGraphInferrerEngine
           trace(elements, new ClosureTracerVisitor(elements, info, this));
         }
       } else {
-        assert(info is ElementTypeInformation);
+        assert(info is TIElement);
         trace([info.element],
             new StaticTearOffClosureTracerVisitor(info.element, info, this));
       }
@@ -816,26 +816,26 @@ class TypeGraphInferrerEngine
     refine();
 
     if (debug.PRINT_SUMMARY) {
-      types.allocatedLists.values.forEach((ListTypeInformation info) {
+      types.allocatedLists.values.forEach((TIList info) {
         print('${info.type} '
               'for ${info.originalType.allocationNode} '
               'at ${info.originalType.allocationElement} '
               'after ${info.refineCount}');
       });
-      types.allocatedMaps.values.forEach((MapTypeInformation info) {
+      types.allocatedMaps.values.forEach((TIMap info) {
         print('${info.type} '
               'for ${info.originalType.allocationNode} '
               'at ${info.originalType.allocationElement} '
               'after ${info.refineCount}');
       });
       types.allocatedClosures.forEach((TINode info) {
-        if (info is ElementTypeInformation) {
+        if (info is TIElement) {
           print('${types.getInferredSignatureOf(info.element)} for '
                 '${info.element}');
-        } else if (info is ClosureTypeInformation) {
+        } else if (info is TIClosure) {
           print('${types.getInferredSignatureOf(info.element)} for '
                 '${info.element}');
-        } else if (info is DynamicCallSiteTypeInformation) {
+        } else if (info is TIDynamicCallSite) {
           for (Element target in info.targets) {
             if (target is FunctionElement) {
               print('${types.getInferredSignatureOf(target)} for ${target}');
@@ -843,7 +843,7 @@ class TypeGraphInferrerEngine
               print('${types.getInferredTypeOf(target).type} for ${target}');
             }
           }
-        } else if (info is StaticCallSiteTypeInformation) {
+        } else if (info is TIStaticCallSite) {
           ClassElement cls = info.calledElement.enclosingClass;
           FunctionElement callMethod = cls.lookupMember(Identifiers.call);
           print('${types.getInferredSignatureOf(callMethod)} for ${cls}');
@@ -882,7 +882,7 @@ class TypeGraphInferrerEngine
         // If [element] is final and has an initializer, we record
         // the inferred type.
         if (fieldElement.initializer != null) {
-          if (type is! ListTypeInformation && type is! MapTypeInformation) {
+          if (type is! TIList && type is! TIMap) {
             // For non-container types, the constant handler does
             // constant folding that could give more precise results.
             ConstantValue value = compiler.backend.constants
@@ -897,7 +897,7 @@ class TypeGraphInferrerEngine
                 // of the type graph and do not drop any flow edges.
                 TypeMask refinedType = computeTypeMask(compiler, value);
                 assert(TypeMask.assertIsNormalized(refinedType, classWorld));
-                type = new NarrowTypeInformation(type, refinedType);
+                type = new TINarrow(type, refinedType);
                 types.allocatedTypes.add(type);
               }
             }
@@ -934,7 +934,7 @@ class TypeGraphInferrerEngine
   void processLoopInformation() {
     allocatedCalls.forEach((info) {
       if (!info.inLoop) return;
-      if (info is StaticCallSiteTypeInformation) {
+      if (info is TIStaticCallSite) {
         compiler.world.addFunctionCalledInLoop(info.calledElement);
       } else if (info.mask != null &&
                  !info.mask.containsAll(compiler.world)) {
@@ -999,7 +999,7 @@ class TypeGraphInferrerEngine
     if (callee.name == Identifiers.noSuchMethod_) return;
     if (callee.isField) {
       if (selector.isSetter) {
-        ElementTypeInformation info = types.getInferredTypeOf(callee);
+        TIElement info = types.getInferredTypeOf(callee);
         if (remove) {
           info.removeAssignment(arguments.positional[0]);
         } else {
@@ -1012,7 +1012,7 @@ class TypeGraphInferrerEngine
     } else if (selector != null && selector.isGetter) {
       // We are tearing a function off and thus create a closure.
       assert(callee.isFunction);
-      MemberTypeInformation info = types.getInferredTypeOf(callee);
+      TIMember info = types.getInferredTypeOf(callee);
       if (remove) {
         info.closurizedCount--;
       } else {
@@ -1027,7 +1027,7 @@ class TypeGraphInferrerEngine
         FunctionElement function = callee.implementation;
         FunctionSignature signature = function.functionSignature;
         signature.forEachParameter((Element parameter) {
-          ParameterTypeInformation info = types.getInferredTypeOf(parameter);
+          TIParameter info = types.getInferredTypeOf(parameter);
           info.tagAsTearOffClosureParameter(this);
           if (addToQueue) workQueue.add(info);
         });
@@ -1065,7 +1065,7 @@ class TypeGraphInferrerEngine
   /**
    * Sets the type of a parameter's default value to [type]. If the global
    * mapping in [defaultTypeOfParameter] already contains a type, it must be
-   * a [PlaceholderTypeInformation], which will be replaced. All its uses are
+   * a [TIPlaceholder], which will be replaced. All its uses are
    * updated.
    */
   void setDefaultTypeOfParameter(ParameterElement parameter,
@@ -1074,7 +1074,7 @@ class TypeGraphInferrerEngine
     TINode existing = defaultTypeOfParameter[parameter];
     defaultTypeOfParameter[parameter] = type;
     TINode info = types.getInferredTypeOf(parameter);
-    if (existing != null && existing is PlaceholderTypeInformation) {
+    if (existing != null && existing is TIPlaceholder) {
       // Replace references to [existing] to use [type] instead.
       if (parameter.functionDeclaration.isInstanceMember) {
         ParameterAssignments assignments = info.assignments;
@@ -1097,16 +1097,16 @@ class TypeGraphInferrerEngine
   /**
    * Returns the [TINode] node for the default value of a parameter.
    * If this is queried before it is set by [setDefaultTypeOfParameter], a
-   * [PlaceholderTypeInformation] is returned, which will later be replaced
+   * [TIPlaceholder] is returned, which will later be replaced
    * by the actual node when [setDefaultTypeOfParameter] is called.
    *
-   * Invariant: After graph construction, no [PlaceholderTypeInformation] nodes
+   * Invariant: After graph construction, no [TIPlaceholder] nodes
    *            should be present and a default type for each parameter should
    *            exist.
    */
   TINode getDefaultTypeOfParameter(Element parameter) {
     return defaultTypeOfParameter.putIfAbsent(parameter, () {
-      return new PlaceholderTypeInformation(types.currentMember);
+      return new TIPlaceholder(types.currentMember);
     });
   }
 
@@ -1117,7 +1117,7 @@ class TypeGraphInferrerEngine
    */
   bool hasAlreadyComputedTypeOfParameterDefault(Element parameter) {
     TINode seen = defaultTypeOfParameter[parameter];
-    return (seen != null && seen is! PlaceholderTypeInformation);
+    return (seen != null && seen is! TIPlaceholder);
   }
 
   TINode typeOfElement(Element element) {
@@ -1178,7 +1178,7 @@ class TypeGraphInferrerEngine
                                         ArgumentsTypes arguments,
                                         SideEffects sideEffects,
                                         bool inLoop) {
-    CallSiteTypeInformation info = new StaticCallSiteTypeInformation(
+    TICallSite info = new TIStaticCallSite(
           types.currentMember, node, caller, callee, selector, mask, arguments,
           inLoop);
     // If this class has a 'call' method then we have essentially created a
@@ -1213,7 +1213,7 @@ class TypeGraphInferrerEngine
       updateSideEffects(sideEffects, selector, callee);
     });
 
-    CallSiteTypeInformation info = new DynamicCallSiteTypeInformation(
+    TICallSite info = new TIDynamicCallSite(
           types.currentMember, node, caller, selector, mask,
           receiverType, arguments, inLoop);
 
@@ -1223,7 +1223,7 @@ class TypeGraphInferrerEngine
   }
 
   TINode registerAwait(ast.Node node, TINode argument) {
-    AwaitTypeInformation info = new AwaitTypeInformation(types.currentMember,
+    TIAwait info = new TIAwait(types.currentMember,
                                                          node);
     info.addAssignment(argument);
     types.allocatedTypes.add(info);
@@ -1240,7 +1240,7 @@ class TypeGraphInferrerEngine
                                         bool inLoop) {
     sideEffects.setDependsOnSomething();
     sideEffects.setAllSideEffects();
-    CallSiteTypeInformation info = new ClosureCallSiteTypeInformation(
+    TICallSite info = new TIClosureCallSite(
           types.currentMember, node, caller, selector, mask, closure, arguments,
           inLoop);
     info.addToGraph(this);
@@ -1302,7 +1302,7 @@ class TypeGraphInferrerEngine
       throw new UnsupportedError(
           "Cannot query the type inferrer when type inference is disabled.");
     }
-    MemberTypeInformation info = types.getInferredTypeOf(element);
+    TIMember info = types.getInferredTypeOf(element);
     return info.callers;
   }
 
@@ -1377,7 +1377,7 @@ class TypeGraphInferrer implements TypesInferrer {
 
   bool isFixedArrayCheckedForGrowable(ast.Node node) {
     if (compiler.disableTypeInference) return true;
-    ListTypeInformation info = inferrer.types.allocatedLists[node];
+    TIList info = inferrer.types.allocatedLists[node];
     return info.checksGrowable;
   }
 
@@ -1422,7 +1422,7 @@ class TypeGraphInferrer implements TypesInferrer {
 
   bool isCalledOnce(Element element) {
     if (compiler.disableTypeInference) return false;
-    MemberTypeInformation info = inferrer.types.getInferredTypeOf(element);
+    TIMember info = inferrer.types.getInferredTypeOf(element);
     return info.isCalledOnce();
   }
 

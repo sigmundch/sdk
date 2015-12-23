@@ -94,12 +94,12 @@ abstract class TracerVisitor<T extends TINode>
   // Work list of lists to analyze after analyzing the users of a
   // [TINode]. We know the [tracedType] has been stored in these
   // lists and we must check how it escapes from these lists.
-  final List<ListTypeInformation> listsToAnalyze =
-      <ListTypeInformation>[];
+  final List<TIList> listsToAnalyze =
+      <TIList>[];
   // Work list of maps to analyze after analyzing the users of a
   // [TINode]. We know the [tracedType] has been stored in these
   // maps and we must check how it escapes from these maps.
-  final List<MapTypeInformation> mapsToAnalyze = <MapTypeInformation>[];
+  final List<TIMap> mapsToAnalyze = <TIMap>[];
 
   final Setlet<TINode> flowsInto = new Setlet<TINode>();
 
@@ -153,65 +153,65 @@ abstract class TracerVisitor<T extends TINode>
     continueAnalyzing = false;
   }
 
-  void visitAwaitTypeInformation(AwaitTypeInformation info) {
+  void visitAwaitTypeInformation(TIAwait info) {
     bailout("Passed through await");
   }
 
-  void visitNarrowTypeInformation(NarrowTypeInformation info) {
+  void visitNarrowTypeInformation(TINarrow info) {
     addNewEscapeInformation(info);
   }
 
-  void visitPhiElementTypeInformation(PhiElementTypeInformation info) {
+  void visitPhiElementTypeInformation(TIPhiElement info) {
     addNewEscapeInformation(info);
   }
 
   void visitElementInContainerTypeInformation(
-      ElementInContainerTypeInformation info) {
+      TIElementInContainer info) {
     addNewEscapeInformation(info);
   }
 
-  void visitKeyInMapTypeInformation(KeyInMapTypeInformation info) {
+  void visitKeyInMapTypeInformation(TIKeyInMap info) {
     // We do not track the use of keys from a map, so we have to bail.
     bailout('Used as key in Map');
   }
 
-  void visitValueInMapTypeInformation(ValueInMapTypeInformation info) {
+  void visitValueInMapTypeInformation(TIValueInMap info) {
     addNewEscapeInformation(info);
   }
 
-  void visitListTypeInformation(ListTypeInformation info) {
+  void visitListTypeInformation(TIList info) {
     listsToAnalyze.add(info);
   }
 
-  void visitMapTypeInformation(MapTypeInformation info) {
+  void visitMapTypeInformation(TIMap info) {
     mapsToAnalyze.add(info);
   }
-  void visitConcreteTypeInformation(ConcreteTypeInformation info) {}
+  void visitConcreteTypeInformation(TIConcrete info) {}
 
-  void visitStringLiteralTypeInformation(StringLiteralTypeInformation info) {}
+  void visitStringLiteralTypeInformation(TIStringLiteral info) {}
 
-  void visitBoolLiteralTypeInformation(BoolLiteralTypeInformation info) {}
+  void visitBoolLiteralTypeInformation(TIBoolLiteral info) {}
 
-  void visitClosureTypeInformation(ClosureTypeInformation info) {}
+  void visitClosureTypeInformation(TIClosure info) {}
 
   void visitClosureCallSiteTypeInformation(
-      ClosureCallSiteTypeInformation info) {}
+      TIClosureCallSite info) {}
 
-  visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info) {
+  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
     Element called = info.calledElement;
     if (inferrer.types.getInferredTypeOf(called) == currentUser) {
       addNewEscapeInformation(info);
     }
   }
 
-  void analyzeStoredIntoList(ListTypeInformation list) {
+  void analyzeStoredIntoList(TIList list) {
     inferrer.analyzeListAndEnqueue(list);
     if (list.bailedOut) {
       bailout('Stored in a list that bailed out');
     } else {
       list.flowsInto.forEach((flow) {
         flow.users.forEach((user) {
-          if (user is !DynamicCallSiteTypeInformation) return;
+          if (user is !TIDynamicCallSite) return;
           if (user.receiver != flow) return;
           if (inferrer.returnsListElementTypeSet.contains(user.selector)) {
             addNewEscapeInformation(user);
@@ -223,14 +223,14 @@ abstract class TracerVisitor<T extends TINode>
     }
   }
 
-  void analyzeStoredIntoMap(MapTypeInformation map) {
+  void analyzeStoredIntoMap(TIMap map) {
     inferrer.analyzeMapAndEnqueue(map);
     if (map.bailedOut) {
       bailout('Stored in a map that bailed out');
     } else {
       map.flowsInto.forEach((flow) {
         flow.users.forEach((user) {
-          if (user is !DynamicCallSiteTypeInformation) return;
+          if (user is !TIDynamicCallSite) return;
           if (user.receiver != flow) return;
           if (user.selector.isIndex) {
             addNewEscapeInformation(user);
@@ -247,7 +247,7 @@ abstract class TracerVisitor<T extends TINode>
    * of what list adding means has to stay in sync with
    * [isParameterOfListAddingMethod].
    */
-  bool isAddedToContainer(DynamicCallSiteTypeInformation info) {
+  bool isAddedToContainer(TIDynamicCallSite info) {
     if (info.arguments == null) return false;
     var receiverType = info.receiver.type;
     if (!receiverType.isContainer) return false;
@@ -258,7 +258,7 @@ abstract class TracerVisitor<T extends TINode>
         || (selectorName == 'add' && currentUser == arguments[0]);
   }
 
-  bool isIndexSetOnMap(DynamicCallSiteTypeInformation info) {
+  bool isIndexSetOnMap(TIDynamicCallSite info) {
     if (info.arguments == null) return false;
     var receiverType = info.receiver.type;
     if (!receiverType.isMap) return false;
@@ -270,7 +270,7 @@ abstract class TracerVisitor<T extends TINode>
    * definition of map adding method has to stay in sync with
    * [isParameterOfMapAddingMethod].
    */
-  bool isValueAddedToMap(DynamicCallSiteTypeInformation info) {
+  bool isValueAddedToMap(TIDynamicCallSite info) {
      return isIndexSetOnMap(info) &&
          currentUser == info.arguments.positional[1];
   }
@@ -280,18 +280,18 @@ abstract class TracerVisitor<T extends TINode>
    * definition of map adding method has to stay in sync with
    * [isParameterOfMapAddingMethod].
    */
-  bool isKeyAddedToMap(DynamicCallSiteTypeInformation info) {
+  bool isKeyAddedToMap(TIDynamicCallSite info) {
     return isIndexSetOnMap(info) &&
         currentUser == info.arguments.positional[0];
   }
 
   void visitDynamicCallSiteTypeInformation(
-      DynamicCallSiteTypeInformation info) {
+      TIDynamicCallSite info) {
     if (isAddedToContainer(info)) {
       ContainerTypeMask mask = info.receiver.type;
 
       if (mask.allocationNode != null) {
-        ListTypeInformation list =
+        TIList list =
             inferrer.types.allocatedLists[mask.allocationNode];
         listsToAnalyze.add(list);
       } else {
@@ -303,7 +303,7 @@ abstract class TracerVisitor<T extends TINode>
     } else if (isValueAddedToMap(info)) {
       MapTypeMask mask = info.receiver.type;
       if (mask.allocationNode != null) {
-        MapTypeInformation map =
+        TIMap map =
             inferrer.types.allocatedMaps[mask.allocationNode];
         mapsToAnalyze.add(map);
       } else {
@@ -375,7 +375,7 @@ abstract class TracerVisitor<T extends TINode>
     return outermost.declaration != element.declaration;
   }
 
-  void visitMemberTypeInformation(MemberTypeInformation info) {
+  void visitMemberTypeInformation(TIMember info) {
     if (info.isClosurized) {
       bailout('Returned from a closurized method');
     }
@@ -389,7 +389,7 @@ abstract class TracerVisitor<T extends TINode>
     addNewEscapeInformation(info);
   }
 
-  void visitParameterTypeInformation(ParameterTypeInformation info) {
+  void visitParameterTypeInformation(TIParameter info) {
     ParameterElement element = info.element;
     if (inferrer.isNativeElement(element.functionDeclaration)) {
       bailout('Passed to a native method');

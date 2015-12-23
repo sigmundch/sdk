@@ -66,7 +66,7 @@ abstract class TINode {
   TypeMask type = const TypeMask.nonNullEmpty();
 
   /// The graph node of the member this [TINode] node belongs to.
-  final MemberTypeInformation context;
+  final TIMember context;
 
   /// The element this [TINode] node belongs to.
   MemberElement get contextMember => context == null ? null : context.element;
@@ -239,7 +239,7 @@ abstract class TINode {
   }
 }
 
-abstract class ApplyableTypeInformation implements TINode {
+abstract class TIApplyable implements TINode {
   bool mightBePassedToFunctionApply = false;
 }
 
@@ -251,8 +251,8 @@ abstract class ApplyableTypeInformation implements TINode {
  * the corresponding default expression has been analyzed. See
  * [getDefaultTypeOfParameter] and [setDefaultTypeOfParameter] for details.
  */
-class PlaceholderTypeInformation extends TINode {
-  PlaceholderTypeInformation(MemberTypeInformation context) : super(context);
+class TIPlaceholder extends TINode {
+  TIPlaceholder(TIMember context) : super(context);
 
   void accept(TypeInformationVisitor visitor) {
     throw new UnsupportedError("Cannot visit placeholder");
@@ -315,7 +315,7 @@ class ParameterAssignments extends IterableBase<TINode> {
 
 /**
  * A node representing a resolved element of the program. The kind of
- * elements that need an [ElementTypeInformation] are:
+ * elements that need an [TIElement] are:
  *
  * - Functions (including getters and setters)
  * - Constructors (factory or generative)
@@ -323,11 +323,11 @@ class ParameterAssignments extends IterableBase<TINode> {
  * - Parameters
  * - Local variables mutated in closures
  *
- * The [ElementTypeInformation] of a function and a constructor is its
+ * The [TIElement] of a function and a constructor is its
  * return type.
  *
  * Note that a few elements of these kinds must be treated specially,
- * and they are dealt in [ElementTypeInformation.handleSpecialCases]:
+ * and they are dealt in [TIElement.handleSpecialCases]:
  *
  * - Parameters of closures, [noSuchMethod] and [call] instance
  *   methods: we currently do not infer types for those.
@@ -340,26 +340,26 @@ class ParameterAssignments extends IterableBase<TINode> {
  *   trust their type annotation.
  *
  */
-abstract class ElementTypeInformation extends TINode {
+abstract class TIElement extends TINode {
   final Element element;
 
   /// Marker to disable inference for closures in [handleSpecialCases].
   bool disableInferenceForClosures = true;
 
-  factory ElementTypeInformation(Element element, TypeInformationSystem types) {
+  factory TIElement(Element element, TypeInformationSystem types) {
     if (element.isParameter || element.isInitializingFormal) {
       ParameterElement parameter = element;
       if (parameter.functionDeclaration.isInstanceMember) {
-        return new ParameterTypeInformation._instanceMember(element, types);
+        return new TIParameter._instanceMember(element, types);
       }
-      return new ParameterTypeInformation._internal(element, types);
+      return new TIParameter._internal(element, types);
     }
-    return new MemberTypeInformation._internal(element);
+    return new TIMember._internal(element);
   }
 
-  ElementTypeInformation._internal(MemberTypeInformation context, this.element)
+  TIElement._internal(TIMember context, this.element)
       : super(context);
-  ElementTypeInformation._withAssignments(MemberTypeInformation context,
+  TIElement._withAssignments(TIMember context,
       this.element, assignments)
       : super.withAssignments(context, assignments);
 }
@@ -373,10 +373,10 @@ abstract class ElementTypeInformation extends TINode {
  * - Local functions (closures)
  *
  * These should never be created directly but instead are constructed by
- * the [ElementTypeInformation] factory.
+ * the [TIElement] factory.
  */
-class MemberTypeInformation extends ElementTypeInformation
-    with ApplyableTypeInformation {
+class TIMember extends TIElement
+    with TIApplyable {
   TypedElement get element => super.element;
 
   /**
@@ -395,7 +395,7 @@ class MemberTypeInformation extends ElementTypeInformation
    */
   final Map<Element, Setlet<Spannable>> _callers = new Map<Element, Setlet>();
 
-  MemberTypeInformation._internal(Element element)
+  TIMember._internal(Element element)
       : super._internal(null, element);
 
   void addCall(Element caller, Spannable node) {
@@ -539,20 +539,20 @@ class MemberTypeInformation extends ElementTypeInformation
  * - Initializing formals
  *
  * These should never be created directly but instead are constructed by
- * the [ElementTypeInformation] factory.
+ * the [TIElement] factory.
  */
-class ParameterTypeInformation extends ElementTypeInformation {
+class TIParameter extends TIElement {
   ParameterElement get element => super.element;
   FunctionElement get declaration => element.functionDeclaration;
 
-  ParameterTypeInformation._internal(ParameterElement element,
+  TIParameter._internal(ParameterElement element,
                                      TypeInformationSystem types)
       : super._internal(types.getInferredTypeOf(element.functionDeclaration),
                         element) {
     assert(!element.functionDeclaration.isInstanceMember);
   }
 
-  ParameterTypeInformation._instanceMember(ParameterElement element,
+  TIParameter._instanceMember(ParameterElement element,
                                            TypeInformationSystem types)
       : super._withAssignments(
           types.getInferredTypeOf(element.functionDeclaration),
@@ -662,17 +662,17 @@ class ParameterTypeInformation extends ElementTypeInformation {
 }
 
 /**
- * A [CallSiteTypeInformation] is a call found in the AST, or a
+ * A [TICallSite] is a call found in the AST, or a
  * synthesized call for implicit calls in Dart (such as forwarding
  * factories). The [call] field is a [ast.Node] for the former, and an
  * [Element] for the latter.
  *
- * In the inferrer graph, [CallSiteTypeInformation] nodes do not have
+ * In the inferrer graph, [TICallSite] nodes do not have
  * any assignment. They rely on the [caller] field for static calls,
  * and [selector] and [receiver] fields for dynamic calls.
  */
-abstract class CallSiteTypeInformation extends TINode
-    with ApplyableTypeInformation {
+abstract class TICallSite extends TINode
+    with TIApplyable {
   final Spannable call;
   final Element caller;
   final Selector selector;
@@ -680,8 +680,8 @@ abstract class CallSiteTypeInformation extends TINode
   final ArgumentsTypes arguments;
   final bool inLoop;
 
-  CallSiteTypeInformation(
-      MemberTypeInformation context,
+  TICallSite(
+      TIMember context,
       this.call,
       this.caller,
       this.selector,
@@ -698,11 +698,11 @@ abstract class CallSiteTypeInformation extends TINode
   Iterable<Element> get callees;
 }
 
-class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
+class TIStaticCallSite extends TICallSite {
   final Element calledElement;
 
-  StaticCallSiteTypeInformation(
-      MemberTypeInformation context,
+  TIStaticCallSite(
+      TIMember context,
       Spannable call,
       Element enclosing,
       this.calledElement,
@@ -713,7 +713,7 @@ class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
       : super(context, call, enclosing, selector, mask, arguments, inLoop);
 
   void addToGraph(TypeGraphInferrerEngine inferrer) {
-    MemberTypeInformation callee =
+    TIMember callee =
         inferrer.types.getInferredTypeOf(calledElement);
     callee.addCall(caller, call);
     callee.addUser(this);
@@ -755,7 +755,7 @@ class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
   }
 
   void removeAndClearReferences(TypeGraphInferrerEngine inferrer) {
-    ElementTypeInformation callee =
+    TIElement callee =
         inferrer.types.getInferredTypeOf(calledElement);
     callee.removeUser(this);
     if (arguments != null) {
@@ -765,13 +765,13 @@ class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
   }
 }
 
-class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
+class TIDynamicCallSite extends TICallSite {
   final TINode receiver;
   /// Cached targets of this call.
   Iterable<Element> targets;
 
-  DynamicCallSiteTypeInformation(
-      MemberTypeInformation context,
+  TIDynamicCallSite(
+      TIMember context,
       Spannable call,
       Element enclosing,
       Selector selector,
@@ -790,7 +790,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
       arguments.forEach((info) => info.addUser(this));
     }
     for (Element element in targets) {
-      MemberTypeInformation callee = inferrer.types.getInferredTypeOf(element);
+      TIMember callee = inferrer.types.getInferredTypeOf(element);
       callee.addCall(caller, call);
       callee.addUser(this);
       inferrer.updateParameterAssignments(
@@ -928,7 +928,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
 
     // Add calls to new targets to the graph.
     targets.where((target) => !oldTargets.contains(target)).forEach((element) {
-      MemberTypeInformation callee =
+      TIMember callee =
           inferrer.types.getInferredTypeOf(element);
       callee.addCall(caller, call);
       callee.addUser(this);
@@ -940,7 +940,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
     // Walk over the old targets, and remove calls that cannot happen
     // anymore.
     oldTargets.where((target) => !targets.contains(target)).forEach((element) {
-      MemberTypeInformation callee =
+      TIMember callee =
           inferrer.types.getInferredTypeOf(element);
       callee.removeCall(caller, call);
       callee.removeUser(this);
@@ -1017,7 +1017,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
       targets = inferrer.compiler.world.allFunctions.filter(selector, mask);
       for (Element element in targets) {
         if (!oldTargets.contains(element)) {
-          MemberTypeInformation callee =
+          TIMember callee =
               inferrer.types.getInferredTypeOf(element);
           callee.addCall(caller, call);
           inferrer.updateParameterAssignments(
@@ -1031,7 +1031,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
 
   void removeAndClearReferences(TypeGraphInferrerEngine inferrer) {
     for (Element element in targets) {
-      ElementTypeInformation callee = inferrer.types.getInferredTypeOf(element);
+      TIElement callee = inferrer.types.getInferredTypeOf(element);
       callee.removeUser(this);
     }
     if (arguments != null) {
@@ -1055,11 +1055,11 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
   }
 }
 
-class ClosureCallSiteTypeInformation extends CallSiteTypeInformation {
+class TIClosureCallSite extends TICallSite {
   final TINode closure;
 
-  ClosureCallSiteTypeInformation(
-      MemberTypeInformation context,
+  TIClosureCallSite(
+      TIMember context,
       Spannable call,
       Element enclosing,
       Selector selector,
@@ -1098,17 +1098,17 @@ class ClosureCallSiteTypeInformation extends CallSiteTypeInformation {
 }
 
 /**
- * A [ConcreteTypeInformation] represents a type that needed
+ * A [TIConcrete] represents a type that needed
  * to be materialized during the creation of the graph. For example,
- * literals, [:this:] or [:super:] need a [ConcreteTypeInformation].
+ * literals, [:this:] or [:super:] need a [TIConcrete].
  *
- * [ConcreteTypeInformation] nodes have no assignment. Also, to save
- * on memory, we do not add users to [ConcreteTypeInformation] nodes,
+ * [TIConcrete] nodes have no assignment. Also, to save
+ * on memory, we do not add users to [TIConcrete] nodes,
  * because we know such node will never be refined to a different
  * type.
  */
-class ConcreteTypeInformation extends TINode {
-  ConcreteTypeInformation(TypeMask type) : super.untracked() {
+class TIConcrete extends TINode {
+  TIConcrete(TypeMask type) : super.untracked() {
     this.type = type;
     this.isStable = true;
   }
@@ -1151,10 +1151,10 @@ class ConcreteTypeInformation extends TINode {
   bool hasStableType(TypeGraphInferrerEngine inferrer) => true;
 }
 
-class StringLiteralTypeInformation extends ConcreteTypeInformation {
+class TIStringLiteral extends TIConcrete {
   final ast.DartString value;
 
-  StringLiteralTypeInformation(value, TypeMask mask)
+  TIStringLiteral(value, TypeMask mask)
       : super(new ValueTypeMask(mask, new StringConstantValue(value))),
         this.value = value;
 
@@ -1166,10 +1166,10 @@ class StringLiteralTypeInformation extends ConcreteTypeInformation {
   }
 }
 
-class BoolLiteralTypeInformation extends ConcreteTypeInformation {
+class TIBoolLiteral extends TIConcrete {
   final ast.LiteralBool value;
 
-  BoolLiteralTypeInformation(value, TypeMask mask)
+  TIBoolLiteral(value, TypeMask mask)
       : super(new ValueTypeMask(mask,
             value.value ? new TrueConstantValue() : new FalseConstantValue())),
         this.value = value;
@@ -1182,13 +1182,13 @@ class BoolLiteralTypeInformation extends ConcreteTypeInformation {
 }
 
 /**
- * A [NarrowTypeInformation] narrows a [TINode] to a type,
+ * A [TINarrow] narrows a [TINode] to a type,
  * represented in [typeAnnotation].
  *
- * A [NarrowTypeInformation] node has only one assignment: the
+ * A [TINarrow] node has only one assignment: the
  * [TINode] it narrows.
  *
- * [NarrowTypeInformation] nodes are created for:
+ * [TINarrow] nodes are created for:
  *
  * - Code after `is` and `as` checks, where we have more information
  *   on the type of the right hand side of the expression.
@@ -1200,10 +1200,10 @@ class BoolLiteralTypeInformation extends ConcreteTypeInformation {
  * - In checked mode, after a type annotation, we have more
  *   information on the type of a local.
  */
-class NarrowTypeInformation extends TINode {
+class TINarrow extends TINode {
   final TypeMask typeAnnotation;
 
-  NarrowTypeInformation(TINode narrowedType, this.typeAnnotation)
+  TINarrow(TINode narrowedType, this.typeAnnotation)
       : super(narrowedType.context) {
     addAssignment(narrowedType);
   }
@@ -1237,16 +1237,16 @@ class NarrowTypeInformation extends TINode {
 }
 
 /**
- * An [InferredTypeInformation] is a [TINode] that
+ * An [TIInferred] is a [TINode] that
  * defaults to the dynamic type until it is marked as beeing
  * inferred, at which point it computes its type based on
  * its assignments.
  */
-abstract class InferredTypeInformation extends TINode {
+abstract class TIInferred extends TINode {
   /** Whether the element type in that container has been inferred. */
   bool inferred = false;
 
-  InferredTypeInformation(MemberTypeInformation context,
+  TIInferred(TIMember context,
                           TINode parentType)
       : super(context) {
     if (parentType != null) addAssignment(parentType);
@@ -1263,12 +1263,12 @@ abstract class InferredTypeInformation extends TINode {
 }
 
 /**
- * A [ListTypeInformation] is a [TINode] created
+ * A [TIList] is a [TINode] created
  * for each `List` instantiations.
  */
-class ListTypeInformation extends TINode
-    with TracedTypeInformation {
-  final ElementInContainerTypeInformation elementType;
+class TIList extends TINode
+    with TITraced {
+  final TIElementInContainer elementType;
 
   /** The container type before it is inferred. */
   final ContainerTypeMask originalType;
@@ -1285,7 +1285,7 @@ class ListTypeInformation extends TINode
    */
   bool checksGrowable = true;
 
-  ListTypeInformation(MemberTypeInformation context,
+  TIList(TIMember context,
                       this.originalType,
                       this.elementType,
                       this.originalLength)
@@ -1323,11 +1323,11 @@ class ListTypeInformation extends TINode
 }
 
 /**
- * An [ElementInContainerTypeInformation] holds the common type of the
- * elements in a [ListTypeInformation].
+ * An [TIElementInContainer] holds the common type of the
+ * elements in a [TIList].
  */
-class ElementInContainerTypeInformation extends InferredTypeInformation {
-  ElementInContainerTypeInformation(MemberTypeInformation context,
+class TIElementInContainer extends TIInferred {
+  TIElementInContainer(TIMember context,
       elementType)
       : super(context, elementType);
 
@@ -1339,17 +1339,17 @@ class ElementInContainerTypeInformation extends InferredTypeInformation {
 }
 
 /**
- * A [MapTypeInformation] is a [TINode] created
+ * A [TIMap] is a [TINode] created
  * for maps.
  */
-class MapTypeInformation extends TINode
-    with TracedTypeInformation {
+class TIMap extends TINode
+    with TITraced {
   // When in Dictionary mode, this map tracks the type of the values that
   // have been assigned to a specific [String] key.
-  final Map<String, ValueInMapTypeInformation> typeInfoMap = {};
+  final Map<String, TIValueInMap> typeInfoMap = {};
   // These fields track the overall type of the keys/values in the map.
-  final KeyInMapTypeInformation keyType;
-  final ValueInMapTypeInformation valueType;
+  final TIKeyInMap keyType;
+  final TIValueInMap valueType;
   final MapTypeMask originalType;
 
   // Set to false if a statically unknown key flows into this map.
@@ -1357,7 +1357,7 @@ class MapTypeInformation extends TINode
 
   bool get inDictionaryMode => !bailedOut && _allKeysAreStrings;
 
-  MapTypeInformation(MemberTypeInformation context,
+  TIMap(TIMember context,
                      this.originalType,
                      this.keyType,
                      this.valueType)
@@ -1371,10 +1371,10 @@ class MapTypeInformation extends TINode
                                      TINode value,
                                      [bool nonNull = false]) {
     TINode newInfo = null;
-    if (_allKeysAreStrings && key is StringLiteralTypeInformation) {
+    if (_allKeysAreStrings && key is TIStringLiteral) {
       String keyString = key.asString();
       typeInfoMap.putIfAbsent(keyString, () {
-          newInfo = new ValueInMapTypeInformation(context, null, nonNull);
+          newInfo = new TIValueInMap(context, null, nonNull);
           return newInfo;
       });
       typeInfoMap[keyString].addAssignment(value);
@@ -1389,13 +1389,13 @@ class MapTypeInformation extends TINode
     return newInfo;
   }
 
-  List<TINode> addMapAssignment(MapTypeInformation other) {
+  List<TINode> addMapAssignment(TIMap other) {
     List<TINode> newInfos = <TINode>[];
     if (_allKeysAreStrings && other.inDictionaryMode) {
       other.typeInfoMap.forEach((keyString, value) {
         typeInfoMap.putIfAbsent(keyString, () {
           TINode newInfo =
-              new ValueInMapTypeInformation(context, null, false);
+              new TIValueInMap(context, null, false);
           newInfos.add(newInfo);
           return newInfo;
         });
@@ -1489,11 +1489,11 @@ class MapTypeInformation extends TINode
 }
 
 /**
- * A [KeyInMapTypeInformation] holds the common type
- * for the keys in a [MapTypeInformation]
+ * A [TIKeyInMap] holds the common type
+ * for the keys in a [TIMap]
  */
-class KeyInMapTypeInformation extends InferredTypeInformation {
-  KeyInMapTypeInformation(MemberTypeInformation context,
+class TIKeyInMap extends TIInferred {
+  TIKeyInMap(TIMember context,
       TINode keyType)
       : super(context, keyType);
 
@@ -1505,16 +1505,16 @@ class KeyInMapTypeInformation extends InferredTypeInformation {
 }
 
 /**
- * A [ValueInMapTypeInformation] holds the common type
- * for the values in a [MapTypeInformation]
+ * A [TIValueInMap] holds the common type
+ * for the values in a [TIMap]
  */
-class ValueInMapTypeInformation extends InferredTypeInformation {
+class TIValueInMap extends TIInferred {
   // [nonNull] is set to true if this value is known to be part of the map.
   // Note that only values assigned to a specific key value in dictionary
   // mode can ever be marked as [nonNull].
   final bool nonNull;
 
-  ValueInMapTypeInformation(MemberTypeInformation context,
+  TIValueInMap(TIMember context,
       TINode valueType, [this.nonNull = false])
       : super(context, valueType);
 
@@ -1531,15 +1531,15 @@ class ValueInMapTypeInformation extends InferredTypeInformation {
 }
 
 /**
- * A [PhiElementTypeInformation] is an union of
- * [ElementTypeInformation], that is local to a method.
+ * A [TIPhiElement] is an union of
+ * [TIElement], that is local to a method.
  */
-class PhiElementTypeInformation extends TINode {
+class TIPhiElement extends TINode {
   final ast.Node branchNode;
   final bool isLoopPhi;
   final Local variable;
 
-  PhiElementTypeInformation(MemberTypeInformation context, this.branchNode,
+  TIPhiElement(TIMember context, this.branchNode,
                             this.isLoopPhi, this.variable)
       : super(context);
 
@@ -1554,12 +1554,12 @@ class PhiElementTypeInformation extends TINode {
   }
 }
 
-class ClosureTypeInformation extends TINode
-    with ApplyableTypeInformation {
+class TIClosure extends TINode
+    with TIApplyable {
   final ast.Node node;
   final Element element;
 
-  ClosureTypeInformation(MemberTypeInformation context, this.node,
+  TIClosure(TIMember context, this.node,
                          this.element)
       : super(context);
 
@@ -1583,7 +1583,7 @@ class ClosureTypeInformation extends TINode
 /**
  * Mixin for [TINode] nodes that can bail out during tracing.
  */
-abstract class TracedTypeInformation implements TINode {
+abstract class TITraced implements TINode {
   /// Set to false once analysis has succeeded.
   bool bailedOut = true;
   /// Set to true once analysis is completed.
@@ -1601,7 +1601,7 @@ abstract class TracedTypeInformation implements TINode {
   }
 
   /**
-   * Adds [nodes] to the sets of values this [TracedTypeInformation] flows into.
+   * Adds [nodes] to the sets of values this [TITraced] flows into.
    */
   void addFlowsIntoTargets(Iterable<TINode> nodes) {
     if (_flowsInto == null) {
@@ -1612,10 +1612,10 @@ abstract class TracedTypeInformation implements TINode {
   }
 }
 
-class AwaitTypeInformation extends TINode {
+class TIAwait extends TINode {
   final ast.Node node;
 
-  AwaitTypeInformation(MemberTypeInformation context, this.node)
+  TIAwait(TIMember context, this.node)
       : super(context);
 
   // TODO(22894): Compute a better type here.
@@ -1629,24 +1629,24 @@ class AwaitTypeInformation extends TINode {
 }
 
 abstract class TypeInformationVisitor<T> {
-  T visitNarrowTypeInformation(NarrowTypeInformation info);
-  T visitPhiElementTypeInformation(PhiElementTypeInformation info);
+  T visitNarrowTypeInformation(TINarrow info);
+  T visitPhiElementTypeInformation(TIPhiElement info);
   T visitElementInContainerTypeInformation(
-      ElementInContainerTypeInformation info);
-  T visitKeyInMapTypeInformation(KeyInMapTypeInformation info);
-  T visitValueInMapTypeInformation(ValueInMapTypeInformation info);
-  T visitListTypeInformation(ListTypeInformation info);
-  T visitMapTypeInformation(MapTypeInformation info);
-  T visitConcreteTypeInformation(ConcreteTypeInformation info);
-  T visitStringLiteralTypeInformation(StringLiteralTypeInformation info);
-  T visitBoolLiteralTypeInformation(BoolLiteralTypeInformation info);
-  T visitClosureCallSiteTypeInformation(ClosureCallSiteTypeInformation info);
-  T visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info);
-  T visitDynamicCallSiteTypeInformation(DynamicCallSiteTypeInformation info);
-  T visitMemberTypeInformation(MemberTypeInformation info);
-  T visitParameterTypeInformation(ParameterTypeInformation info);
-  T visitClosureTypeInformation(ClosureTypeInformation info);
-  T visitAwaitTypeInformation(AwaitTypeInformation info);
+      TIElementInContainer info);
+  T visitKeyInMapTypeInformation(TIKeyInMap info);
+  T visitValueInMapTypeInformation(TIValueInMap info);
+  T visitListTypeInformation(TIList info);
+  T visitMapTypeInformation(TIMap info);
+  T visitConcreteTypeInformation(TIConcrete info);
+  T visitStringLiteralTypeInformation(TIStringLiteral info);
+  T visitBoolLiteralTypeInformation(TIBoolLiteral info);
+  T visitClosureCallSiteTypeInformation(TIClosureCallSite info);
+  T visitStaticCallSiteTypeInformation(TIStaticCallSite info);
+  T visitDynamicCallSiteTypeInformation(TIDynamicCallSite info);
+  T visitMemberTypeInformation(TIMember info);
+  T visitParameterTypeInformation(TIParameter info);
+  T visitClosureTypeInformation(TIClosure info);
+  T visitAwaitTypeInformation(TIAwait info);
 }
 
 TypeMask _narrowType(Compiler compiler, TypeMask type, DartType annotation,

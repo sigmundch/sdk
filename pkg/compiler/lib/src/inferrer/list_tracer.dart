@@ -133,7 +133,7 @@ Set<String> doNotChangeLengthSelectorsSet = new Set<String>.from(
   ]);
 
 
-class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
+class ListTracerVisitor extends TracerVisitor<TIList> {
   // The [Set] of found assignments to the list.
   Set<TINode> assignments = new Setlet<TINode>();
   bool callsGrowableMethod = false;
@@ -147,7 +147,7 @@ class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
    */
   bool run() {
     analyze();
-    ListTypeInformation list = tracedType;
+    TIList list = tracedType;
     if (continueAnalyzing) {
       if (!callsGrowableMethod && list.inferredLength == null) {
         list.inferredLength = list.originalLength;
@@ -161,11 +161,11 @@ class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
     }
   }
 
-  visitClosureCallSiteTypeInformation(ClosureCallSiteTypeInformation info) {
+  visitClosureCallSiteTypeInformation(TIClosureCallSite info) {
     bailout('Passed to a closure');
   }
 
-  visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info) {
+  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
     super.visitStaticCallSiteTypeInformation(info);
     Element called = info.calledElement;
     if (compiler.backend.isForeign(called) && called.name == 'JS') {
@@ -173,7 +173,7 @@ class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
     }
   }
 
-  visitDynamicCallSiteTypeInformation(DynamicCallSiteTypeInformation info) {
+  visitDynamicCallSiteTypeInformation(TIDynamicCallSite info) {
     super.visitDynamicCallSiteTypeInformation(info);
     Selector selector = info.selector;
     String selectorName = selector.name;

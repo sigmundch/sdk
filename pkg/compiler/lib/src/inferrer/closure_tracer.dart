@@ -13,10 +13,10 @@ import 'nodes.dart';
 import 'debug.dart' as debug;
 
 
-class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
+class ClosureTracerVisitor extends TracerVisitor<TIApplyable> {
   final Iterable<FunctionElement> tracedElements;
-  final List<CallSiteTypeInformation> _callsToAnalyze =
-      new List<CallSiteTypeInformation>();
+  final List<TICallSite> _callsToAnalyze =
+      new List<TICallSite>();
 
   ClosureTracerVisitor(this.tracedElements, tracedType, inferrer)
       : super(tracedType, inferrer);
@@ -27,7 +27,7 @@ class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
     _callsToAnalyze.forEach(_analyzeCall);
     for(FunctionElement e in tracedElements) {
       e.functionSignature.forEachParameter((Element parameter) {
-        ElementTypeInformation info =
+        TIElement info =
             inferrer.types.getInferredTypeOf(parameter);
         info.disableInferenceForClosures = false;
       });
@@ -41,11 +41,11 @@ class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
     }
   }
 
-  void _registerCallForLaterAnalysis(CallSiteTypeInformation info) {
+  void _registerCallForLaterAnalysis(TICallSite info) {
     _callsToAnalyze.add(info);
   }
 
-  void _analyzeCall(CallSiteTypeInformation info) {
+  void _analyzeCall(TICallSite info) {
     Selector selector = info.selector;
     TypeMask mask = info.mask;
     tracedElements.forEach((FunctionElement functionElement) {
@@ -56,7 +56,7 @@ class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
   }
 
   @override
-  visitClosureCallSiteTypeInformation(ClosureCallSiteTypeInformation info) {
+  visitClosureCallSiteTypeInformation(TIClosureCallSite info) {
     super.visitClosureCallSiteTypeInformation(info);
     if (info.closure == currentUser) {
       _registerCallForLaterAnalysis(info);
@@ -66,7 +66,7 @@ class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
   }
 
   @override
-  visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info) {
+  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
     super.visitStaticCallSiteTypeInformation(info);
     Element called = info.calledElement;
     if (compiler.backend.isForeign(called)) {
@@ -97,7 +97,7 @@ class ClosureTracerVisitor extends TracerVisitor<ApplyableTypeInformation> {
       compiler.functionApplyMethod == element;
 
   @override
-  visitDynamicCallSiteTypeInformation(DynamicCallSiteTypeInformation info) {
+  visitDynamicCallSiteTypeInformation(TIDynamicCallSite info) {
     super.visitDynamicCallSiteTypeInformation(info);
     if (info.selector.isCall) {
       if (info.arguments.contains(currentUser)) {
@@ -123,7 +123,7 @@ class StaticTearOffClosureTracerVisitor extends ClosureTracerVisitor {
       : super([tracedElement], tracedType, inferrer);
 
   @override
-  visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info) {
+  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
     super.visitStaticCallSiteTypeInformation(info);
     if (info.calledElement == tracedElements.first
         && info.selector != null

@@ -31,7 +31,7 @@ Set<String> okMapSelectorsSet = new Set.from(
       "forEach",
       "remove"]);
 
-class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
+class MapTracerVisitor extends TracerVisitor<TIMap> {
   // These lists are used to keep track of newly discovered assignments to
   // the map. Note that elements at corresponding indices are expected to
   // belong to the same assignment operation.
@@ -39,7 +39,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
   List<TINode> valueAssignments = <TINode>[];
   // This list is used to keep track of assignments of entire maps to
   // this map.
-  List<MapTypeInformation> mapAssignments = <MapTypeInformation>[];
+  List<TIMap> mapAssignments = <TIMap>[];
 
   MapTracerVisitor(tracedType, inferrer) : super(tracedType, inferrer);
 
@@ -51,7 +51,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
    */
   bool run() {
     analyze();
-    MapTypeInformation map = tracedType;
+    TIMap map = tracedType;
     if (continueAnalyzing) {
       map.addFlowsIntoTargets(flowsInto);
       return true;
@@ -60,11 +60,11 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
     return false;
   }
 
-  visitClosureCallSiteTypeInformation(ClosureCallSiteTypeInformation info) {
+  visitClosureCallSiteTypeInformation(TIClosureCallSite info) {
     bailout('Passed to a closure');
   }
 
-  visitStaticCallSiteTypeInformation(StaticCallSiteTypeInformation info) {
+  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
     super.visitStaticCallSiteTypeInformation(info);
     Element called = info.calledElement;
     if (compiler.backend.isForeign(called) && called.name == 'JS') {
@@ -72,7 +72,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
     }
   }
 
-  visitDynamicCallSiteTypeInformation(DynamicCallSiteTypeInformation info) {
+  visitDynamicCallSiteTypeInformation(TIDynamicCallSite info) {
     super.visitDynamicCallSiteTypeInformation(info);
     Selector selector = info.selector;
     String selectorName = selector.name;
@@ -83,7 +83,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
             // All keys and values from the argument flow into
             // the map.
             TINode map = info.arguments.positional[0];
-            if (map is MapTypeInformation) {
+            if (map is TIMap) {
               inferrer.analyzeMapAndEnqueue(map);
               mapAssignments.add(map);
             } else {
@@ -106,7 +106,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
           } else {
             // It would be nice to handle [Map.keys] and [Map.values], too.
             // However, currently those calls do not trigger the creation
-            // of a [ListTypeInformation], so I have nowhere to propagate
+            // of a [TIList], so I have nowhere to propagate
             // that information.
             // TODO(herhut): add support for Map.keys and Map.values.
             bailout('Map used in a not-ok selector [$selectorName]');
