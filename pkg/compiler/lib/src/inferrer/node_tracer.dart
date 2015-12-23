@@ -75,7 +75,7 @@ Set<String> doesNotEscapeMapSet = new Set<String>.from(
   ]);
 
 /// Common logic to trace a value through the type inference graph nodes.
-abstract class TracerVisitor<T extends TypeInformation>
+abstract class TracerVisitor<T extends TINode>
     implements TypeInformationVisitor {
   final T tracedType;
   final TypeGraphInferrerEngine inferrer;
@@ -87,27 +87,27 @@ abstract class TracerVisitor<T extends TypeInformation>
   TracerVisitor(this.tracedType, TypeGraphInferrerEngine inferrer)
       : this.inferrer = inferrer, this.compiler = inferrer.compiler;
 
-  // Work list that gets populated with [TypeInformation] that could
+  // Work list that gets populated with [TINode] that could
   // contain the container.
-  final List<TypeInformation> workList = <TypeInformation>[];
+  final List<TINode> workList = <TINode>[];
 
   // Work list of lists to analyze after analyzing the users of a
-  // [TypeInformation]. We know the [tracedType] has been stored in these
+  // [TINode]. We know the [tracedType] has been stored in these
   // lists and we must check how it escapes from these lists.
   final List<ListTypeInformation> listsToAnalyze =
       <ListTypeInformation>[];
   // Work list of maps to analyze after analyzing the users of a
-  // [TypeInformation]. We know the [tracedType] has been stored in these
+  // [TINode]. We know the [tracedType] has been stored in these
   // maps and we must check how it escapes from these maps.
   final List<MapTypeInformation> mapsToAnalyze = <MapTypeInformation>[];
 
-  final Setlet<TypeInformation> flowsInto = new Setlet<TypeInformation>();
+  final Setlet<TINode> flowsInto = new Setlet<TINode>();
 
-  // The current [TypeInformation] in the analysis.
-  TypeInformation currentUser;
+  // The current [TINode] in the analysis.
+  TINode currentUser;
   bool continueAnalyzing = true;
 
-  void addNewEscapeInformation(TypeInformation info) {
+  void addNewEscapeInformation(TINode info) {
     if (flowsInto.contains(info)) return;
     flowsInto.add(info);
     workList.add(info);
@@ -117,14 +117,14 @@ abstract class TracerVisitor<T extends TypeInformation>
     int seenSoFar = analyzedElements.length;
     if (seenSoFar + users.length <= MAX_ANALYSIS_COUNT) return false;
     int actualWork = users
-        .where((TypeInformation user) => !analyzedElements.contains(user.owner))
+        .where((TINode user) => !analyzedElements.contains(user.owner))
         .length;
     return seenSoFar + actualWork > MAX_ANALYSIS_COUNT;
   }
 
   void analyze() {
-    // Collect the [TypeInformation] where the list can flow in,
-    // as well as the operations done on all these [TypeInformation]s.
+    // Collect the [TINode] where the list can flow in,
+    // as well as the operations done on all these [TINode]s.
     addNewEscapeInformation(tracedType);
     while (!workList.isEmpty) {
       currentUser = workList.removeLast();
@@ -132,7 +132,7 @@ abstract class TracerVisitor<T extends TypeInformation>
         bailout('Too many users');
         break;
       }
-      for (TypeInformation info in currentUser.users) {
+      for (TINode info in currentUser.users) {
         analyzedElements.add(info.owner);
         info.accept(this);
       }
@@ -252,7 +252,7 @@ abstract class TracerVisitor<T extends TypeInformation>
     var receiverType = info.receiver.type;
     if (!receiverType.isContainer) return false;
     String selectorName = info.selector.name;
-    List<TypeInformation> arguments = info.arguments.positional;
+    List<TINode> arguments = info.arguments.positional;
     return (selectorName == '[]=' && currentUser == arguments[1])
         || (selectorName == 'insert' && currentUser == arguments[1])
         || (selectorName == 'add' && currentUser == arguments[0]);

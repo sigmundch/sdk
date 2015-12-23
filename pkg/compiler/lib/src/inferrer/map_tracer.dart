@@ -35,8 +35,8 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
   // These lists are used to keep track of newly discovered assignments to
   // the map. Note that elements at corresponding indices are expected to
   // belong to the same assignment operation.
-  List<TypeInformation> keyAssignments = <TypeInformation>[];
-  List<TypeInformation> valueAssignments = <TypeInformation>[];
+  List<TINode> keyAssignments = <TINode>[];
+  List<TINode> valueAssignments = <TINode>[];
   // This list is used to keep track of assignments of entire maps to
   // this map.
   List<MapTypeInformation> mapAssignments = <MapTypeInformation>[];
@@ -46,7 +46,7 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
   /**
    * Returns [true] if the analysis completed successfully, [false]
    * if it bailed out. In the former case, [keyAssignments] and
-   * [valueAssignments] hold a list of [TypeInformation] nodes that
+   * [valueAssignments] hold a list of [TINode] nodes that
    * flow into the key and value types of this map.
    */
   bool run() {
@@ -82,15 +82,15 @@ class MapTracerVisitor extends TracerVisitor<MapTypeInformation> {
           if (selectorName == 'addAll') {
             // All keys and values from the argument flow into
             // the map.
-            TypeInformation map = info.arguments.positional[0];
+            TINode map = info.arguments.positional[0];
             if (map is MapTypeInformation) {
               inferrer.analyzeMapAndEnqueue(map);
               mapAssignments.add(map);
             } else {
-              // If we could select a component from a [TypeInformation],
+              // If we could select a component from a [TINode],
               // like the keytype or valuetype in this case, we could
               // propagate more here.
-              // TODO(herhut): implement selection on [TypeInformation].
+              // TODO(herhut): implement selection on [TINode].
               bailout('Adding map with unknown typeinfo to current map');
             }
           } else if (selectorName == 'putIfAbsent') {

@@ -135,7 +135,7 @@ Set<String> doNotChangeLengthSelectorsSet = new Set<String>.from(
 
 class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
   // The [Set] of found assignments to the list.
-  Set<TypeInformation> assignments = new Setlet<TypeInformation>();
+  Set<TINode> assignments = new Setlet<TINode>();
   bool callsGrowableMethod = false;
 
   ListTracerVisitor(tracedType, inferrer) : super(tracedType, inferrer);
@@ -143,7 +143,7 @@ class ListTracerVisitor extends TracerVisitor<ListTypeInformation> {
   /**
    * Returns [true] if the analysis completed successfully, [false] if it
    * bailed out. In the former case, [assignments] holds a list of
-   * [TypeInformation] nodes that flow into the element type of this list.
+   * [TINode] nodes that flow into the element type of this list.
    */
   bool run() {
     analyze();

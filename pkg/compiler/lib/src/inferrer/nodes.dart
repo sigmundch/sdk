@@ -53,25 +53,25 @@ import 'debug.dart' as debug;
  * - Type of the element in a container
  *
  * A node has a set of assignments and users. Assignments are used to
- * compute the type of the node ([TypeInformation.computeType]). Users are
+ * compute the type of the node ([TINode.computeType]). Users are
  * added to the inferrer's work queue when the type of the node
  * changes.
  */
-abstract class TypeInformation {
-  Set<TypeInformation> users;
+abstract class TINode {
+  Set<TINode> users;
   var /* List|ParameterAssignments */ _assignments;
 
-  /// The type the inferrer has found for this [TypeInformation].
+  /// The type the inferrer has found for this [TINode].
   /// Initially empty.
   TypeMask type = const TypeMask.nonNullEmpty();
 
-  /// The graph node of the member this [TypeInformation] node belongs to.
+  /// The graph node of the member this [TINode] node belongs to.
   final MemberTypeInformation context;
 
-  /// The element this [TypeInformation] node belongs to.
+  /// The element this [TINode] node belongs to.
   MemberElement get contextMember => context == null ? null : context.element;
 
-  Iterable<TypeInformation> get assignments => _assignments;
+  Iterable<TINode> get assignments => _assignments;
 
   /// We abandon inference in certain cases (complex cyclic flow, native
   /// behaviours, etc.). In some case, we might resume inference in the
@@ -81,10 +81,10 @@ abstract class TypeInformation {
   bool get mightResume =>
       !identical(assignments, STOP_TRACKING_ASSIGNMENTS_MARKER);
 
-  /// Number of times this [TypeInformation] has changed type.
+  /// Number of times this [TINode] has changed type.
   int refineCount = 0;
 
-  /// Whether this [TypeInformation] is currently in the inferrer's
+  /// Whether this [TINode] is currently in the inferrer's
   /// work queue.
   bool inQueue = false;
 
@@ -95,7 +95,7 @@ abstract class TypeInformation {
   /// to false should never change inference outcome, just make is slower.
   bool doNotEnqueue = false;
 
-  /// Whether this [TypeInformation] has a stable [type] that will not
+  /// Whether this [TINode] has a stable [type] that will not
   /// change.
   bool isStable = false;
 
@@ -105,60 +105,60 @@ abstract class TypeInformation {
 
   bool get isConcrete => false;
 
-  TypeInformation(this.context) : _assignments = <TypeInformation>[],
-                                  users = new Setlet<TypeInformation>();
+  TINode(this.context) : _assignments = <TINode>[],
+                                  users = new Setlet<TINode>();
 
-  TypeInformation.noAssignments(this.context)
-      : _assignments = const <TypeInformation>[],
-        users = new Setlet<TypeInformation>();
+  TINode.noAssignments(this.context)
+      : _assignments = const <TINode>[],
+        users = new Setlet<TINode>();
 
-  TypeInformation.untracked()
-      : _assignments = const <TypeInformation>[],
+  TINode.untracked()
+      : _assignments = const <TINode>[],
         users = const ImmutableEmptySet(),
         context = null;
 
-  TypeInformation.withAssignments(this.context, this._assignments)
-      : users = new Setlet<TypeInformation>();
+  TINode.withAssignments(this.context, this._assignments)
+      : users = new Setlet<TINode>();
 
-  void addUser(TypeInformation user) {
+  void addUser(TINode user) {
     assert(!user.isConcrete);
     users.add(user);
   }
 
-  void addUsersOf(TypeInformation other) {
+  void addUsersOf(TINode other) {
     users.addAll(other.users);
   }
 
-  void removeUser(TypeInformation user) {
+  void removeUser(TINode user) {
     assert(!user.isConcrete);
     users.remove(user);
   }
 
   // The below is not a compile time constant to make it differentiable
-  // from other empty lists of [TypeInformation].
-  static final STOP_TRACKING_ASSIGNMENTS_MARKER = new List<TypeInformation>(0);
+  // from other empty lists of [TINode].
+  static final STOP_TRACKING_ASSIGNMENTS_MARKER = new List<TINode>(0);
 
   bool areAssignmentsTracked() {
     return assignments != STOP_TRACKING_ASSIGNMENTS_MARKER;
   }
 
-  void addAssignment(TypeInformation assignment) {
+  void addAssignment(TINode assignment) {
     // Cheap one-level cycle detection.
     if (assignment == this) return;
     if (areAssignmentsTracked()) {
       _assignments.add(assignment);
     }
-    // Even if we abandon inferencing on this [TypeInformation] we
+    // Even if we abandon inferencing on this [TINode] we
     // need to collect the users, so that phases that track where
     // elements flow in still work.
     assignment.addUser(this);
   }
 
-  void removeAssignment(TypeInformation assignment) {
+  void removeAssignment(TINode assignment) {
     if (!abandonInferencing || mightResume) {
       _assignments.remove(assignment);
     }
-    // We can have multiple assignments of the same [TypeInformation].
+    // We can have multiple assignments of the same [TINode].
     if (!assignments.contains(assignment)) {
       assignment.removeUser(this);
     }
@@ -169,13 +169,13 @@ abstract class TypeInformation {
   }
 
   /**
-   * Computes a new type for this [TypeInformation] node depending on its
+   * Computes a new type for this [TINode] node depending on its
    * potentially updated inputs.
    */
   TypeMask computeType(TypeGraphInferrerEngine inferrer);
 
   /**
-   * Returns an approximation for this [TypeInformation] node that is always
+   * Returns an approximation for this [TINode] node that is always
    * safe to use. Used when abandoning inference on a node.
    */
   TypeMask safeType(TypeGraphInferrerEngine inferrer) {
@@ -208,8 +208,8 @@ abstract class TypeInformation {
 
   accept(TypeInformationVisitor visitor);
 
-  /// The [Element] where this [TypeInformation] was created. May be `null`
-  /// for some [TypeInformation] nodes, where we do not need to store
+  /// The [Element] where this [TINode] was created. May be `null`
+  /// for some [TINode] nodes, where we do not need to store
   /// the information.
   Element get owner => (context != null) ? context.element : null;
 
@@ -239,7 +239,7 @@ abstract class TypeInformation {
   }
 }
 
-abstract class ApplyableTypeInformation implements TypeInformation {
+abstract class ApplyableTypeInformation implements TINode {
   bool mightBePassedToFunctionApply = false;
 }
 
@@ -251,7 +251,7 @@ abstract class ApplyableTypeInformation implements TypeInformation {
  * the corresponding default expression has been analyzed. See
  * [getDefaultTypeOfParameter] and [setDefaultTypeOfParameter] for details.
  */
-class PlaceholderTypeInformation extends TypeInformation {
+class PlaceholderTypeInformation extends TINode {
   PlaceholderTypeInformation(MemberTypeInformation context) : super(context);
 
   void accept(TypeInformationVisitor visitor) {
@@ -272,11 +272,11 @@ class PlaceholderTypeInformation extends TypeInformation {
  * to a type where we know more about which instance method is being
  * called.
  */
-class ParameterAssignments extends IterableBase<TypeInformation> {
-  final Map<TypeInformation, int> assignments =
-      new Map<TypeInformation, int>();
+class ParameterAssignments extends IterableBase<TINode> {
+  final Map<TINode, int> assignments =
+      new Map<TINode, int>();
 
-  void remove(TypeInformation info) {
+  void remove(TINode info) {
     int existing = assignments[info];
     if (existing == null) return;
     if (existing == 1) {
@@ -286,7 +286,7 @@ class ParameterAssignments extends IterableBase<TypeInformation> {
     }
   }
 
-  void add(TypeInformation info) {
+  void add(TINode info) {
     int existing = assignments[info];
     if (existing == null) {
       assignments[info] = 1;
@@ -295,7 +295,7 @@ class ParameterAssignments extends IterableBase<TypeInformation> {
     }
   }
 
-  void replace(TypeInformation old, TypeInformation replacement) {
+  void replace(TINode old, TINode replacement) {
     int existing = assignments[old];
     if (existing != null) {
       int other = assignments[replacement];
@@ -305,10 +305,10 @@ class ParameterAssignments extends IterableBase<TypeInformation> {
     }
   }
 
-  Iterator<TypeInformation> get iterator => assignments.keys.iterator;
-  Iterable<TypeInformation> where(Function f) => assignments.keys.where(f);
+  Iterator<TINode> get iterator => assignments.keys.iterator;
+  Iterable<TINode> where(Function f) => assignments.keys.where(f);
 
-  bool contains(TypeInformation info) => assignments.containsKey(info);
+  bool contains(TINode info) => assignments.containsKey(info);
 
   String toString() => assignments.keys.toList().toString();
 }
@@ -340,7 +340,7 @@ class ParameterAssignments extends IterableBase<TypeInformation> {
  *   trust their type annotation.
  *
  */
-abstract class ElementTypeInformation extends TypeInformation {
+abstract class ElementTypeInformation extends TINode {
   final Element element;
 
   /// Marker to disable inference for closures in [handleSpecialCases].
@@ -428,7 +428,7 @@ class MemberTypeInformation extends ElementTypeInformation
   // Closurized methods never become stable to ensure that the information in
   // [users] is accurate. The inference stops tracking users for stable types.
   // Note that we only override the getter, the setter will still modify the
-  // state of the [isStable] field inhertied from [TypeInformation].
+  // state of the [isStable] field inhertied from [TINode].
   bool get isStable => super.isStable && !isClosurized;
 
   TypeMask handleSpecialCases(TypeGraphInferrerEngine inferrer) {
@@ -568,7 +568,7 @@ class ParameterTypeInformation extends ElementTypeInformation {
     isTearOffClosureParameter = true;
     // We have to add a flow-edge for the default value (if it exists), as we
     // might not see all call-sites and thus miss the use of it.
-    TypeInformation defaultType = inferrer.getDefaultTypeOfParameter(element);
+    TINode defaultType = inferrer.getDefaultTypeOfParameter(element);
     if (defaultType != null) defaultType.addUser(this);
   }
 
@@ -671,7 +671,7 @@ class ParameterTypeInformation extends ElementTypeInformation {
  * any assignment. They rely on the [caller] field for static calls,
  * and [selector] and [receiver] fields for dynamic calls.
  */
-abstract class CallSiteTypeInformation extends TypeInformation
+abstract class CallSiteTypeInformation extends TINode
     with ApplyableTypeInformation {
   final Spannable call;
   final Element caller;
@@ -766,7 +766,7 @@ class StaticCallSiteTypeInformation extends CallSiteTypeInformation {
 }
 
 class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
-  final TypeInformation receiver;
+  final TINode receiver;
   /// Cached targets of this call.
   Iterable<Element> targets;
 
@@ -827,7 +827,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
    * example, we know int + int returns an int. The Dart code for
    * [int.operator+] only says it returns a [num].
    */
-  TypeInformation handleIntrisifiedSelector(Selector selector,
+  TINode handleIntrisifiedSelector(Selector selector,
                                             TypeMask mask,
                                             TypeGraphInferrerEngine inferrer) {
     ClassWorld classWorld = inferrer.classWorld;
@@ -993,7 +993,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
         }
         return mapTypeMask.valueType;
       } else {
-        TypeInformation info =
+        TINode info =
             handleIntrisifiedSelector(selector, typeMask, inferrer);
         if (info != null) return info.type;
         return inferrer.typeOfElementWithSelector(element, selector).type;
@@ -1056,7 +1056,7 @@ class DynamicCallSiteTypeInformation extends CallSiteTypeInformation {
 }
 
 class ClosureCallSiteTypeInformation extends CallSiteTypeInformation {
-  final TypeInformation closure;
+  final TINode closure;
 
   ClosureCallSiteTypeInformation(
       MemberTypeInformation context,
@@ -1107,7 +1107,7 @@ class ClosureCallSiteTypeInformation extends CallSiteTypeInformation {
  * because we know such node will never be refined to a different
  * type.
  */
-class ConcreteTypeInformation extends TypeInformation {
+class ConcreteTypeInformation extends TINode {
   ConcreteTypeInformation(TypeMask type) : super.untracked() {
     this.type = type;
     this.isStable = true;
@@ -1115,24 +1115,24 @@ class ConcreteTypeInformation extends TypeInformation {
 
   bool get isConcrete => true;
 
-  void addUser(TypeInformation user) {
+  void addUser(TINode user) {
     // Nothing to do, a concrete type does not get updated so never
     // needs to notify its users.
   }
 
-  void addUsersOf(TypeInformation other) {
+  void addUsersOf(TINode other) {
     // Nothing to do, a concrete type does not get updated so never
     // needs to notify its users.
   }
 
-  void removeUser(TypeInformation user) {
+  void removeUser(TINode user) {
   }
 
-  void addAssignment(TypeInformation assignment) {
+  void addAssignment(TINode assignment) {
     throw "Not supported";
   }
 
-  void removeAssignment(TypeInformation assignment) {
+  void removeAssignment(TINode assignment) {
     throw "Not supported";
   }
 
@@ -1182,11 +1182,11 @@ class BoolLiteralTypeInformation extends ConcreteTypeInformation {
 }
 
 /**
- * A [NarrowTypeInformation] narrows a [TypeInformation] to a type,
+ * A [NarrowTypeInformation] narrows a [TINode] to a type,
  * represented in [typeAnnotation].
  *
  * A [NarrowTypeInformation] node has only one assignment: the
- * [TypeInformation] it narrows.
+ * [TINode] it narrows.
  *
  * [NarrowTypeInformation] nodes are created for:
  *
@@ -1200,15 +1200,15 @@ class BoolLiteralTypeInformation extends ConcreteTypeInformation {
  * - In checked mode, after a type annotation, we have more
  *   information on the type of a local.
  */
-class NarrowTypeInformation extends TypeInformation {
+class NarrowTypeInformation extends TINode {
   final TypeMask typeAnnotation;
 
-  NarrowTypeInformation(TypeInformation narrowedType, this.typeAnnotation)
+  NarrowTypeInformation(TINode narrowedType, this.typeAnnotation)
       : super(narrowedType.context) {
     addAssignment(narrowedType);
   }
 
-  addAssignment(TypeInformation info) {
+  addAssignment(TINode info) {
     super.addAssignment(info);
     assert(assignments.length == 1);
   }
@@ -1237,17 +1237,17 @@ class NarrowTypeInformation extends TypeInformation {
 }
 
 /**
- * An [InferredTypeInformation] is a [TypeInformation] that
+ * An [InferredTypeInformation] is a [TINode] that
  * defaults to the dynamic type until it is marked as beeing
  * inferred, at which point it computes its type based on
  * its assignments.
  */
-abstract class InferredTypeInformation extends TypeInformation {
+abstract class InferredTypeInformation extends TINode {
   /** Whether the element type in that container has been inferred. */
   bool inferred = false;
 
   InferredTypeInformation(MemberTypeInformation context,
-                          TypeInformation parentType)
+                          TINode parentType)
       : super(context) {
     if (parentType != null) addAssignment(parentType);
   }
@@ -1263,10 +1263,10 @@ abstract class InferredTypeInformation extends TypeInformation {
 }
 
 /**
- * A [ListTypeInformation] is a [TypeInformation] created
+ * A [ListTypeInformation] is a [TINode] created
  * for each `List` instantiations.
  */
-class ListTypeInformation extends TypeInformation
+class ListTypeInformation extends TINode
     with TracedTypeInformation {
   final ElementInContainerTypeInformation elementType;
 
@@ -1339,10 +1339,10 @@ class ElementInContainerTypeInformation extends InferredTypeInformation {
 }
 
 /**
- * A [MapTypeInformation] is a [TypeInformation] created
+ * A [MapTypeInformation] is a [TINode] created
  * for maps.
  */
-class MapTypeInformation extends TypeInformation
+class MapTypeInformation extends TINode
     with TracedTypeInformation {
   // When in Dictionary mode, this map tracks the type of the values that
   // have been assigned to a specific [String] key.
@@ -1367,10 +1367,10 @@ class MapTypeInformation extends TypeInformation
     type = originalType;
   }
 
-  TypeInformation addEntryAssignment(TypeInformation key,
-                                     TypeInformation value,
+  TINode addEntryAssignment(TINode key,
+                                     TINode value,
                                      [bool nonNull = false]) {
-    TypeInformation newInfo = null;
+    TINode newInfo = null;
     if (_allKeysAreStrings && key is StringLiteralTypeInformation) {
       String keyString = key.asString();
       typeInfoMap.putIfAbsent(keyString, () {
@@ -1389,12 +1389,12 @@ class MapTypeInformation extends TypeInformation
     return newInfo;
   }
 
-  List<TypeInformation> addMapAssignment(MapTypeInformation other) {
-    List<TypeInformation> newInfos = <TypeInformation>[];
+  List<TINode> addMapAssignment(MapTypeInformation other) {
+    List<TINode> newInfos = <TINode>[];
     if (_allKeysAreStrings && other.inDictionaryMode) {
       other.typeInfoMap.forEach((keyString, value) {
         typeInfoMap.putIfAbsent(keyString, () {
-          TypeInformation newInfo =
+          TINode newInfo =
               new ValueInMapTypeInformation(context, null, false);
           newInfos.add(newInfo);
           return newInfo;
@@ -1416,7 +1416,7 @@ class MapTypeInformation extends TypeInformation
     typeInfoMap.values.forEach((v) => v.inferred = true);
   }
 
-  addAssignment(TypeInformation other) {
+  addAssignment(TINode other) {
     throw "not supported";
   }
 
@@ -1452,7 +1452,7 @@ class MapTypeInformation extends TypeInformation
       assert(inDictionaryMode);
       DictionaryTypeMask mask = type;
       for (var key in typeInfoMap.keys) {
-        TypeInformation value = typeInfoMap[key];
+        TINode value = typeInfoMap[key];
         if (!mask.typeMap.containsKey(key) &&
             !value.type.containsAll(inferrer.classWorld) &&
             !value.type.isNullable) {
@@ -1494,7 +1494,7 @@ class MapTypeInformation extends TypeInformation
  */
 class KeyInMapTypeInformation extends InferredTypeInformation {
   KeyInMapTypeInformation(MemberTypeInformation context,
-      TypeInformation keyType)
+      TINode keyType)
       : super(context, keyType);
 
   accept(TypeInformationVisitor visitor) {
@@ -1515,7 +1515,7 @@ class ValueInMapTypeInformation extends InferredTypeInformation {
   final bool nonNull;
 
   ValueInMapTypeInformation(MemberTypeInformation context,
-      TypeInformation valueType, [this.nonNull = false])
+      TINode valueType, [this.nonNull = false])
       : super(context, valueType);
 
   accept(TypeInformationVisitor visitor) {
@@ -1534,7 +1534,7 @@ class ValueInMapTypeInformation extends InferredTypeInformation {
  * A [PhiElementTypeInformation] is an union of
  * [ElementTypeInformation], that is local to a method.
  */
-class PhiElementTypeInformation extends TypeInformation {
+class PhiElementTypeInformation extends TINode {
   final ast.Node branchNode;
   final bool isLoopPhi;
   final Local variable;
@@ -1554,7 +1554,7 @@ class PhiElementTypeInformation extends TypeInformation {
   }
 }
 
-class ClosureTypeInformation extends TypeInformation
+class ClosureTypeInformation extends TINode
     with ApplyableTypeInformation {
   final ast.Node node;
   final Element element;
@@ -1581,29 +1581,29 @@ class ClosureTypeInformation extends TypeInformation
 }
 
 /**
- * Mixin for [TypeInformation] nodes that can bail out during tracing.
+ * Mixin for [TINode] nodes that can bail out during tracing.
  */
-abstract class TracedTypeInformation implements TypeInformation {
+abstract class TracedTypeInformation implements TINode {
   /// Set to false once analysis has succeeded.
   bool bailedOut = true;
   /// Set to true once analysis is completed.
   bool analyzed = false;
 
-  Set<TypeInformation> _flowsInto;
+  Set<TINode> _flowsInto;
 
   /**
-   * The set of [TypeInformation] nodes where values from the traced node could
+   * The set of [TINode] nodes where values from the traced node could
    * flow in.
    */
-  Set<TypeInformation> get flowsInto {
-    return (_flowsInto == null) ? const ImmutableEmptySet<TypeInformation>()
+  Set<TINode> get flowsInto {
+    return (_flowsInto == null) ? const ImmutableEmptySet<TINode>()
                                 : _flowsInto;
   }
 
   /**
    * Adds [nodes] to the sets of values this [TracedTypeInformation] flows into.
    */
-  void addFlowsIntoTargets(Iterable<TypeInformation> nodes) {
+  void addFlowsIntoTargets(Iterable<TINode> nodes) {
     if (_flowsInto == null) {
       _flowsInto = nodes.toSet();
     } else {
@@ -1612,7 +1612,7 @@ abstract class TracedTypeInformation implements TypeInformation {
   }
 }
 
-class AwaitTypeInformation extends TypeInformation {
+class AwaitTypeInformation extends TINode {
   final ast.Node node;
 
   AwaitTypeInformation(MemberTypeInformation context, this.node)
