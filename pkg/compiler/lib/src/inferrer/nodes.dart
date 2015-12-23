@@ -99,7 +99,7 @@ abstract class TINode {
   /// change.
   bool isStable = false;
 
-  // TypeInformations are unique.
+  // TINodes are unique.
   static int staticHashCode = 0;
   final int hashCode = staticHashCode++;
 
@@ -206,7 +206,7 @@ abstract class TINode {
     return true;
   }
 
-  accept(TypeInformationVisitor visitor);
+  accept(TINodeVisitor visitor);
 
   /// The [Element] where this [TINode] was created. May be `null`
   /// for some [TINode] nodes, where we do not need to store
@@ -254,7 +254,7 @@ abstract class TIApplyable implements TINode {
 class TIPlaceholder extends TINode {
   TIPlaceholder(TIMember context) : super(context);
 
-  void accept(TypeInformationVisitor visitor) {
+  void accept(TINodeVisitor visitor) {
     throw new UnsupportedError("Cannot visit placeholder");
   }
 
@@ -515,7 +515,7 @@ class TIMember extends TIElement
 
   String toString() => 'MemberElement $element $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitMember(this);
   }
 
@@ -654,7 +654,7 @@ class TIParameter extends TIElement {
     return super.hasStableType(inferrer);
   }
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitParameter(this);
   }
 
@@ -744,7 +744,7 @@ class TIStaticCallSite extends TICallSite {
 
   Iterable<Element> get callees => [calledElement.implementation];
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitStaticCallSite(this);
   }
 
@@ -1042,7 +1042,7 @@ class TIDynamicCallSite extends TICallSite {
 
   String toString() => 'Call site $call on ${receiver.type} $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitDynamicCallSite(this);
   }
 
@@ -1082,7 +1082,7 @@ class TIClosureCallSite extends TICallSite {
 
   String toString() => 'Closure call $call on $closure';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitClosureCallSite(this);
   }
 
@@ -1144,7 +1144,7 @@ class TIConcrete extends TINode {
 
   String toString() => 'Type $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitConcrete(this);
   }
 
@@ -1161,7 +1161,7 @@ class TIStringLiteral extends TIConcrete {
   String asString() => value.slowToString();
   String toString() => 'Type $type value ${value.slowToString()}';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitStringLiteral(this);
   }
 }
@@ -1176,7 +1176,7 @@ class TIBoolLiteral extends TIConcrete {
 
   String toString() => 'Type $type value ${value.value}';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitBoolLiteral(this);
   }
 }
@@ -1231,7 +1231,7 @@ class TINarrow extends TINode {
     return 'Narrow to $typeAnnotation $type';
   }
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitNarrow(this);
   }
 }
@@ -1297,7 +1297,7 @@ class TIList extends TINode
 
   String toString() => 'List type $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitList(this);
   }
 
@@ -1333,7 +1333,7 @@ class TIElementInContainer extends TIInferred {
 
   String toString() => 'Element in container $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitElementInContainer(this);
   }
 }
@@ -1420,7 +1420,7 @@ class TIMap extends TINode
     throw "not supported";
   }
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitMap(this);
   }
 
@@ -1497,7 +1497,7 @@ class TIKeyInMap extends TIInferred {
       TINode keyType)
       : super(context, keyType);
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitKeyInMap(this);
   }
 
@@ -1518,7 +1518,7 @@ class TIValueInMap extends TIInferred {
       TINode valueType, [this.nonNull = false])
       : super(context, valueType);
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitValueInMap(this);
   }
 
@@ -1549,7 +1549,7 @@ class TIPhiElement extends TINode {
 
   String toString() => 'Phi $variable $type';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitPhiElement(this);
   }
 }
@@ -1571,7 +1571,7 @@ class TIClosure extends TINode
 
   String toString() => 'Closure $element';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitClosure(this);
   }
 
@@ -1623,16 +1623,15 @@ class TIAwait extends TINode {
 
   String toString() => 'Await';
 
-  accept(TypeInformationVisitor visitor) {
+  accept(TINodeVisitor visitor) {
     return visitor.visitAwait(this);
   }
 }
 
-abstract class TypeInformationVisitor<T> {
+abstract class TINodeVisitor<T> {
   T visitNarrow(TINarrow info);
   T visitPhiElement(TIPhiElement info);
-  T visitElementInContainer(
-      TIElementInContainer info);
+  T visitElementInContainer(TIElementInContainer info);
   T visitKeyInMap(TIKeyInMap info);
   T visitValueInMap(TIValueInMap info);
   T visitList(TIList info);

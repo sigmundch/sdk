@@ -75,8 +75,7 @@ Set<String> doesNotEscapeMapSet = new Set<String>.from(
   ]);
 
 /// Common logic to trace a value through the type inference graph nodes.
-abstract class TracerVisitor<T extends TINode>
-    implements TypeInformationVisitor {
+abstract class TracerVisitor<T extends TINode> implements TINodeVisitor {
   final T tracedType;
   final TypeGraphInferrerEngine inferrer;
   final Compiler compiler;
