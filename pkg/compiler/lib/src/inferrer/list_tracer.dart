@@ -9,7 +9,7 @@ import '../universe/selector.dart' show Selector;
 import '../util/util.dart' show Setlet;
 
 import 'node_tracer.dart';
-import 'type_graph_nodes.dart';
+import 'nodes.dart';
 
 /**
  * A set of selector names that [List] implements, that we know do not

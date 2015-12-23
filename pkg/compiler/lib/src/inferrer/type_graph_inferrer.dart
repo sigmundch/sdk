@@ -58,7 +58,7 @@ import 'simple_types_inferrer.dart';
 import 'closure_tracer.dart';
 import 'list_tracer.dart';
 import 'map_tracer.dart';
-import 'type_graph_nodes.dart';
+import 'nodes.dart';
 import 'debug.dart' as debug;
 
 

@@ -8,7 +8,7 @@ import '../elements/elements.dart';
 import '../universe/selector.dart' show Selector;
 
 import 'node_tracer.dart';
-import 'type_graph_nodes.dart';
+import 'nodes.dart';
 
 Set<String> okMapSelectorsSet = new Set.from(
     const <String>[
