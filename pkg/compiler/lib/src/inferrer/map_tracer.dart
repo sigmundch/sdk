@@ -60,20 +60,20 @@ class MapTracerVisitor extends TracerVisitor<TIMap> {
     return false;
   }
 
-  visitClosureCallSiteTypeInformation(TIClosureCallSite info) {
+  visitClosureCallSite(TIClosureCallSite info) {
     bailout('Passed to a closure');
   }
 
-  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
-    super.visitStaticCallSiteTypeInformation(info);
+  visitStaticCallSite(TIStaticCallSite info) {
+    super.visitStaticCallSite(info);
     Element called = info.calledElement;
     if (compiler.backend.isForeign(called) && called.name == 'JS') {
       bailout('Used in JS ${info.call}');
     }
   }
 
-  visitDynamicCallSiteTypeInformation(TIDynamicCallSite info) {
-    super.visitDynamicCallSiteTypeInformation(info);
+  visitDynamicCallSite(TIDynamicCallSite info) {
+    super.visitDynamicCallSite(info);
     Selector selector = info.selector;
     String selectorName = selector.name;
     if (currentUser == info.receiver) {

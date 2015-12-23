@@ -516,7 +516,7 @@ class TIMember extends TIElement
   String toString() => 'MemberElement $element $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitMemberTypeInformation(this);
+    return visitor.visitMember(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) {
@@ -655,7 +655,7 @@ class TIParameter extends TIElement {
   }
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitParameterTypeInformation(this);
+    return visitor.visitParameter(this);
   }
 
   String toString() => 'ParameterElement $element $type';
@@ -745,7 +745,7 @@ class TIStaticCallSite extends TICallSite {
   Iterable<Element> get callees => [calledElement.implementation];
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitStaticCallSiteTypeInformation(this);
+    return visitor.visitStaticCallSite(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) {
@@ -1043,7 +1043,7 @@ class TIDynamicCallSite extends TICallSite {
   String toString() => 'Call site $call on ${receiver.type} $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitDynamicCallSiteTypeInformation(this);
+    return visitor.visitDynamicCallSite(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) {
@@ -1083,7 +1083,7 @@ class TIClosureCallSite extends TICallSite {
   String toString() => 'Closure call $call on $closure';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitClosureCallSiteTypeInformation(this);
+    return visitor.visitClosureCallSite(this);
   }
 
   void removeAndClearReferences(TypeGraphInferrerEngine inferrer) {
@@ -1145,7 +1145,7 @@ class TIConcrete extends TINode {
   String toString() => 'Type $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitConcreteTypeInformation(this);
+    return visitor.visitConcrete(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) => true;
@@ -1162,7 +1162,7 @@ class TIStringLiteral extends TIConcrete {
   String toString() => 'Type $type value ${value.slowToString()}';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitStringLiteralTypeInformation(this);
+    return visitor.visitStringLiteral(this);
   }
 }
 
@@ -1177,7 +1177,7 @@ class TIBoolLiteral extends TIConcrete {
   String toString() => 'Type $type value ${value.value}';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitBoolLiteralTypeInformation(this);
+    return visitor.visitBoolLiteral(this);
   }
 }
 
@@ -1232,7 +1232,7 @@ class TINarrow extends TINode {
   }
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitNarrowTypeInformation(this);
+    return visitor.visitNarrow(this);
   }
 }
 
@@ -1298,7 +1298,7 @@ class TIList extends TINode
   String toString() => 'List type $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitListTypeInformation(this);
+    return visitor.visitList(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) {
@@ -1334,7 +1334,7 @@ class TIElementInContainer extends TIInferred {
   String toString() => 'Element in container $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitElementInContainerTypeInformation(this);
+    return visitor.visitElementInContainer(this);
   }
 }
 
@@ -1421,7 +1421,7 @@ class TIMap extends TINode
   }
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitMapTypeInformation(this);
+    return visitor.visitMap(this);
   }
 
   TypeMask toTypeMask(TypeGraphInferrerEngine inferrer) {
@@ -1498,7 +1498,7 @@ class TIKeyInMap extends TIInferred {
       : super(context, keyType);
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitKeyInMapTypeInformation(this);
+    return visitor.visitKeyInMap(this);
   }
 
   String toString() => 'Key in Map $type';
@@ -1519,7 +1519,7 @@ class TIValueInMap extends TIInferred {
       : super(context, valueType);
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitValueInMapTypeInformation(this);
+    return visitor.visitValueInMap(this);
   }
 
   TypeMask computeType(TypeGraphInferrerEngine inferrer) {
@@ -1550,7 +1550,7 @@ class TIPhiElement extends TINode {
   String toString() => 'Phi $variable $type';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitPhiElementTypeInformation(this);
+    return visitor.visitPhiElement(this);
   }
 }
 
@@ -1572,7 +1572,7 @@ class TIClosure extends TINode
   String toString() => 'Closure $element';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitClosureTypeInformation(this);
+    return visitor.visitClosure(this);
   }
 
   bool hasStableType(TypeGraphInferrerEngine inferrer) {
@@ -1624,29 +1624,29 @@ class TIAwait extends TINode {
   String toString() => 'Await';
 
   accept(TypeInformationVisitor visitor) {
-    return visitor.visitAwaitTypeInformation(this);
+    return visitor.visitAwait(this);
   }
 }
 
 abstract class TypeInformationVisitor<T> {
-  T visitNarrowTypeInformation(TINarrow info);
-  T visitPhiElementTypeInformation(TIPhiElement info);
-  T visitElementInContainerTypeInformation(
+  T visitNarrow(TINarrow info);
+  T visitPhiElement(TIPhiElement info);
+  T visitElementInContainer(
       TIElementInContainer info);
-  T visitKeyInMapTypeInformation(TIKeyInMap info);
-  T visitValueInMapTypeInformation(TIValueInMap info);
-  T visitListTypeInformation(TIList info);
-  T visitMapTypeInformation(TIMap info);
-  T visitConcreteTypeInformation(TIConcrete info);
-  T visitStringLiteralTypeInformation(TIStringLiteral info);
-  T visitBoolLiteralTypeInformation(TIBoolLiteral info);
-  T visitClosureCallSiteTypeInformation(TIClosureCallSite info);
-  T visitStaticCallSiteTypeInformation(TIStaticCallSite info);
-  T visitDynamicCallSiteTypeInformation(TIDynamicCallSite info);
-  T visitMemberTypeInformation(TIMember info);
-  T visitParameterTypeInformation(TIParameter info);
-  T visitClosureTypeInformation(TIClosure info);
-  T visitAwaitTypeInformation(TIAwait info);
+  T visitKeyInMap(TIKeyInMap info);
+  T visitValueInMap(TIValueInMap info);
+  T visitList(TIList info);
+  T visitMap(TIMap info);
+  T visitConcrete(TIConcrete info);
+  T visitStringLiteral(TIStringLiteral info);
+  T visitBoolLiteral(TIBoolLiteral info);
+  T visitClosureCallSite(TIClosureCallSite info);
+  T visitStaticCallSite(TIStaticCallSite info);
+  T visitDynamicCallSite(TIDynamicCallSite info);
+  T visitMember(TIMember info);
+  T visitParameter(TIParameter info);
+  T visitClosure(TIClosure info);
+  T visitAwait(TIAwait info);
 }
 
 TypeMask _narrowType(Compiler compiler, TypeMask type, DartType annotation,

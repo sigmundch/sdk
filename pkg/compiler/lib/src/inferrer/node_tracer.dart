@@ -153,51 +153,51 @@ abstract class TracerVisitor<T extends TINode>
     continueAnalyzing = false;
   }
 
-  void visitAwaitTypeInformation(TIAwait info) {
+  void visitAwait(TIAwait info) {
     bailout("Passed through await");
   }
 
-  void visitNarrowTypeInformation(TINarrow info) {
+  void visitNarrow(TINarrow info) {
     addNewEscapeInformation(info);
   }
 
-  void visitPhiElementTypeInformation(TIPhiElement info) {
+  void visitPhiElement(TIPhiElement info) {
     addNewEscapeInformation(info);
   }
 
-  void visitElementInContainerTypeInformation(
+  void visitElementInContainer(
       TIElementInContainer info) {
     addNewEscapeInformation(info);
   }
 
-  void visitKeyInMapTypeInformation(TIKeyInMap info) {
+  void visitKeyInMap(TIKeyInMap info) {
     // We do not track the use of keys from a map, so we have to bail.
     bailout('Used as key in Map');
   }
 
-  void visitValueInMapTypeInformation(TIValueInMap info) {
+  void visitValueInMap(TIValueInMap info) {
     addNewEscapeInformation(info);
   }
 
-  void visitListTypeInformation(TIList info) {
+  void visitList(TIList info) {
     listsToAnalyze.add(info);
   }
 
-  void visitMapTypeInformation(TIMap info) {
+  void visitMap(TIMap info) {
     mapsToAnalyze.add(info);
   }
-  void visitConcreteTypeInformation(TIConcrete info) {}
+  void visitConcrete(TIConcrete info) {}
 
-  void visitStringLiteralTypeInformation(TIStringLiteral info) {}
+  void visitStringLiteral(TIStringLiteral info) {}
 
-  void visitBoolLiteralTypeInformation(TIBoolLiteral info) {}
+  void visitBoolLiteral(TIBoolLiteral info) {}
 
-  void visitClosureTypeInformation(TIClosure info) {}
+  void visitClosure(TIClosure info) {}
 
-  void visitClosureCallSiteTypeInformation(
+  void visitClosureCallSite(
       TIClosureCallSite info) {}
 
-  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
+  visitStaticCallSite(TIStaticCallSite info) {
     Element called = info.calledElement;
     if (inferrer.types.getInferredTypeOf(called) == currentUser) {
       addNewEscapeInformation(info);
@@ -285,7 +285,7 @@ abstract class TracerVisitor<T extends TINode>
         currentUser == info.arguments.positional[0];
   }
 
-  void visitDynamicCallSiteTypeInformation(
+  void visitDynamicCallSite(
       TIDynamicCallSite info) {
     if (isAddedToContainer(info)) {
       ContainerTypeMask mask = info.receiver.type;
@@ -375,7 +375,7 @@ abstract class TracerVisitor<T extends TINode>
     return outermost.declaration != element.declaration;
   }
 
-  void visitMemberTypeInformation(TIMember info) {
+  void visitMember(TIMember info) {
     if (info.isClosurized) {
       bailout('Returned from a closurized method');
     }
@@ -389,7 +389,7 @@ abstract class TracerVisitor<T extends TINode>
     addNewEscapeInformation(info);
   }
 
-  void visitParameterTypeInformation(TIParameter info) {
+  void visitParameter(TIParameter info) {
     ParameterElement element = info.element;
     if (inferrer.isNativeElement(element.functionDeclaration)) {
       bailout('Passed to a native method');
@@ -401,7 +401,7 @@ abstract class TracerVisitor<T extends TINode>
     if (isParameterOfListAddingMethod(info.element) ||
         isParameterOfMapAddingMethod(info.element)) {
       // These elements are being handled in
-      // [visitDynamicCallSiteTypeInformation].
+      // [visitDynamicCallSite].
       return;
     }
     addNewEscapeInformation(info);

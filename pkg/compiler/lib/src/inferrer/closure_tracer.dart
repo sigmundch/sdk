@@ -56,8 +56,8 @@ class ClosureTracerVisitor extends TracerVisitor<TIApplyable> {
   }
 
   @override
-  visitClosureCallSiteTypeInformation(TIClosureCallSite info) {
-    super.visitClosureCallSiteTypeInformation(info);
+  visitClosureCallSite(TIClosureCallSite info) {
+    super.visitClosureCallSite(info);
     if (info.closure == currentUser) {
       _registerCallForLaterAnalysis(info);
     } else {
@@ -66,8 +66,8 @@ class ClosureTracerVisitor extends TracerVisitor<TIApplyable> {
   }
 
   @override
-  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
-    super.visitStaticCallSiteTypeInformation(info);
+  visitStaticCallSite(TIStaticCallSite info) {
+    super.visitStaticCallSite(info);
     Element called = info.calledElement;
     if (compiler.backend.isForeign(called)) {
       String name = called.name;
@@ -97,8 +97,8 @@ class ClosureTracerVisitor extends TracerVisitor<TIApplyable> {
       compiler.functionApplyMethod == element;
 
   @override
-  visitDynamicCallSiteTypeInformation(TIDynamicCallSite info) {
-    super.visitDynamicCallSiteTypeInformation(info);
+  visitDynamicCallSite(TIDynamicCallSite info) {
+    super.visitDynamicCallSite(info);
     if (info.selector.isCall) {
       if (info.arguments.contains(currentUser)) {
         if (!info.targets.every((element) => element.isFunction)) {
@@ -123,8 +123,8 @@ class StaticTearOffClosureTracerVisitor extends ClosureTracerVisitor {
       : super([tracedElement], tracedType, inferrer);
 
   @override
-  visitStaticCallSiteTypeInformation(TIStaticCallSite info) {
-    super.visitStaticCallSiteTypeInformation(info);
+  visitStaticCallSite(TIStaticCallSite info) {
+    super.visitStaticCallSite(info);
     if (info.calledElement == tracedElements.first
         && info.selector != null
         && info.selector.isGetter) {
