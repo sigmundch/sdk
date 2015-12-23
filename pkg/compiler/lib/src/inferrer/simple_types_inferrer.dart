@@ -56,7 +56,7 @@ import 'inferrer_visitor.dart';
  * type information about visited nodes, as well as to request type
  * information of elements.
  */
-abstract class InferrerEngine<T, V extends TypeSystem>
+abstract class InferrerEngine<T, V extends AbstractDomain>
     implements MinimalInferrerEngine<T> {
   final Compiler compiler;
   final ClassWorld classWorld;
@@ -347,14 +347,14 @@ abstract class InferrerEngine<T, V extends TypeSystem>
 /// This visitor is parameterized by an [InferenceEngine], which internally
 /// decides how to represent inference nodes.
 class SimpleTypeInferrerVisitor<T>
-    extends InferrerVisitor<T, InferrerEngine<T, TypeSystem<T>>> {
+    extends InferrerVisitor<T, InferrerEngine<T, AbstractDomain<T>>> {
   T returnType;
   bool visitingInitializers = false;
   bool isConstructorRedirect = false;
   bool seenSuperConstructorCall = false;
   SideEffects sideEffects = new SideEffects.empty();
   final Element outermostElement;
-  final InferrerEngine<T, TypeSystem<T>> inferrer;
+  final InferrerEngine<T, AbstractDomain<T>> inferrer;
   final Setlet<Entity> capturedVariables = new Setlet<Entity>();
 
   SimpleTypeInferrerVisitor.internal(analyzedElement,
@@ -369,7 +369,7 @@ class SimpleTypeInferrerVisitor<T>
 
   SimpleTypeInferrerVisitor(Element element,
                             Compiler compiler,
-                            InferrerEngine<T, TypeSystem<T>> inferrer,
+                            InferrerEngine<T, AbstractDomain<T>> inferrer,
                             [LocalsHandler<T> handler])
     : this.internal(element,
         element.outermostEnclosingMemberOrTopLevel.implementation,
@@ -1996,7 +1996,10 @@ class SimpleTypeInferrerVisitor<T>
                       T receiverType,
                       ArgumentsTypes arguments) {
     assert(receiverType != null);
-    if (types.selectorNeedsUpdate(receiverType, mask)) {
+    if (!types.matchesMask(receiverType, mask)) {
+      // TODO(sigmund, johnniwinther): why are we updating the selectors in the
+      // tree at this point? Seems strange that we are doing this during
+      // inference.
       mask = receiverType == types.dynamicType
           ? null
           : types.newTypedSelector(receiverType, mask);

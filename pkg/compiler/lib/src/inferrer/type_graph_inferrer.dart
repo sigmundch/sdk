@@ -36,8 +36,7 @@ import '../types/types.dart' show
     MapTypeMask,
     TypeMask,
     TypesInferrer;
-import '../types/constants.dart' show
-    computeTypeMask;
+import '../types/constants.dart' as constants show computeTypeMask;
 import '../universe/call_structure.dart' show
     CallStructure;
 import '../universe/selector.dart' show
@@ -52,7 +51,7 @@ import '../world.dart' show
 
 import 'inferrer_visitor.dart' show
     ArgumentsTypes,
-    TypeSystem;
+    AbstractDomain;
 import 'simple_types_inferrer.dart';
 
 import 'closure_tracer.dart';
@@ -62,7 +61,7 @@ import 'nodes.dart';
 import 'debug.dart' as debug;
 
 
-class TypeInformationSystem extends TypeSystem<TINode> {
+class TypeInformationSystem extends AbstractDomain<TINode> {
   final Compiler compiler;
   final ClassWorld classWorld;
 
@@ -92,7 +91,7 @@ class TypeInformationSystem extends TypeSystem<TINode> {
   TypeInformationSystem(Compiler compiler)
       : this.compiler = compiler,
         this.classWorld = compiler.world {
-    nonNullEmptyType = getConcreteTypeFor(const TypeMask.nonNullEmpty());
+    nonNullEmptyType = _getConcreteTypeFor(const TypeMask.nonNullEmpty());
   }
 
   /// Used to group [TINode] nodes by the element that triggered their
@@ -111,137 +110,137 @@ class TypeInformationSystem extends TypeSystem<TINode> {
   TINode nullTypeCache;
   TINode get nullType {
     if (nullTypeCache != null) return nullTypeCache;
-    return nullTypeCache = getConcreteTypeFor(compiler.typesTask.nullType);
+    return nullTypeCache = _getConcreteTypeFor(compiler.typesTask.nullType);
   }
 
   TINode intTypeCache;
   TINode get intType {
     if (intTypeCache != null) return intTypeCache;
-    return intTypeCache = getConcreteTypeFor(compiler.typesTask.intType);
+    return intTypeCache = _getConcreteTypeFor(compiler.typesTask.intType);
   }
 
   TINode uint32TypeCache;
   TINode get uint32Type {
     if (uint32TypeCache != null) return uint32TypeCache;
-    return uint32TypeCache = getConcreteTypeFor(compiler.typesTask.uint32Type);
+    return uint32TypeCache = _getConcreteTypeFor(compiler.typesTask.uint32Type);
   }
 
   TINode uint31TypeCache;
   TINode get uint31Type {
     if (uint31TypeCache != null) return uint31TypeCache;
-    return uint31TypeCache = getConcreteTypeFor(compiler.typesTask.uint31Type);
+    return uint31TypeCache = _getConcreteTypeFor(compiler.typesTask.uint31Type);
   }
 
   TINode positiveIntTypeCache;
   TINode get positiveIntType {
     if (positiveIntTypeCache != null) return positiveIntTypeCache;
     return positiveIntTypeCache =
-        getConcreteTypeFor(compiler.typesTask.positiveIntType);
+        _getConcreteTypeFor(compiler.typesTask.positiveIntType);
   }
 
   TINode doubleTypeCache;
   TINode get doubleType {
     if (doubleTypeCache != null) return doubleTypeCache;
-    return doubleTypeCache = getConcreteTypeFor(compiler.typesTask.doubleType);
+    return doubleTypeCache = _getConcreteTypeFor(compiler.typesTask.doubleType);
   }
 
   TINode numTypeCache;
   TINode get numType {
     if (numTypeCache != null) return numTypeCache;
-    return numTypeCache = getConcreteTypeFor(compiler.typesTask.numType);
+    return numTypeCache = _getConcreteTypeFor(compiler.typesTask.numType);
   }
 
   TINode boolTypeCache;
   TINode get boolType {
     if (boolTypeCache != null) return boolTypeCache;
-    return boolTypeCache = getConcreteTypeFor(compiler.typesTask.boolType);
+    return boolTypeCache = _getConcreteTypeFor(compiler.typesTask.boolType);
   }
 
   TINode functionTypeCache;
   TINode get functionType {
     if (functionTypeCache != null) return functionTypeCache;
     return functionTypeCache =
-        getConcreteTypeFor(compiler.typesTask.functionType);
+        _getConcreteTypeFor(compiler.typesTask.functionType);
   }
 
   TINode listTypeCache;
   TINode get listType {
     if (listTypeCache != null) return listTypeCache;
-    return listTypeCache = getConcreteTypeFor(compiler.typesTask.listType);
+    return listTypeCache = _getConcreteTypeFor(compiler.typesTask.listType);
   }
 
   TINode constListTypeCache;
   TINode get constListType {
     if (constListTypeCache != null) return constListTypeCache;
     return constListTypeCache =
-        getConcreteTypeFor(compiler.typesTask.constListType);
+        _getConcreteTypeFor(compiler.typesTask.constListType);
   }
 
   TINode fixedListTypeCache;
   TINode get fixedListType {
     if (fixedListTypeCache != null) return fixedListTypeCache;
     return fixedListTypeCache =
-        getConcreteTypeFor(compiler.typesTask.fixedListType);
+        _getConcreteTypeFor(compiler.typesTask.fixedListType);
   }
 
   TINode growableListTypeCache;
   TINode get growableListType {
     if (growableListTypeCache != null) return growableListTypeCache;
     return growableListTypeCache =
-        getConcreteTypeFor(compiler.typesTask.growableListType);
+        _getConcreteTypeFor(compiler.typesTask.growableListType);
   }
 
   TINode mapTypeCache;
   TINode get mapType {
     if (mapTypeCache != null) return mapTypeCache;
-    return mapTypeCache = getConcreteTypeFor(compiler.typesTask.mapType);
+    return mapTypeCache = _getConcreteTypeFor(compiler.typesTask.mapType);
   }
 
   TINode constMapTypeCache;
   TINode get constMapType {
     if (constMapTypeCache != null) return constMapTypeCache;
     return constMapTypeCache =
-        getConcreteTypeFor(compiler.typesTask.constMapType);
+        _getConcreteTypeFor(compiler.typesTask.constMapType);
   }
 
   TINode stringTypeCache;
   TINode get stringType {
     if (stringTypeCache != null) return stringTypeCache;
-    return stringTypeCache = getConcreteTypeFor(compiler.typesTask.stringType);
+    return stringTypeCache = _getConcreteTypeFor(compiler.typesTask.stringType);
   }
 
   TINode typeTypeCache;
   TINode get typeType {
     if (typeTypeCache != null) return typeTypeCache;
-    return typeTypeCache = getConcreteTypeFor(compiler.typesTask.typeType);
+    return typeTypeCache = _getConcreteTypeFor(compiler.typesTask.typeType);
   }
 
   TINode dynamicTypeCache;
   TINode get dynamicType {
     if (dynamicTypeCache != null) return dynamicTypeCache;
     return dynamicTypeCache =
-        getConcreteTypeFor(compiler.typesTask.dynamicType);
+        _getConcreteTypeFor(compiler.typesTask.dynamicType);
   }
 
   TINode asyncFutureTypeCache;
   TINode get asyncFutureType {
     if (asyncFutureTypeCache != null) return asyncFutureTypeCache;
     return asyncFutureTypeCache =
-        getConcreteTypeFor(compiler.typesTask.asyncFutureType);
+        _getConcreteTypeFor(compiler.typesTask.asyncFutureType);
   }
 
   TINode syncStarIterableTypeCache;
   TINode get syncStarIterableType {
     if (syncStarIterableTypeCache != null) return syncStarIterableTypeCache;
     return syncStarIterableTypeCache =
-        getConcreteTypeFor(compiler.typesTask.syncStarIterableType);
+        _getConcreteTypeFor(compiler.typesTask.syncStarIterableType);
   }
 
   TINode asyncStarStreamTypeCache;
   TINode get asyncStarStreamType {
     if (asyncStarStreamTypeCache != null) return asyncStarStreamTypeCache;
     return asyncStarStreamTypeCache =
-        getConcreteTypeFor(compiler.typesTask.asyncStarStreamType);
+        _getConcreteTypeFor(compiler.typesTask.asyncStarStreamType);
   }
 
   TINode nonNullEmptyType;
@@ -264,12 +263,12 @@ class TypeInformationSystem extends TypeSystem<TINode> {
     if (firstType == dynamicType || secondType == dynamicType) {
       return dynamicType;
     }
-    return getConcreteTypeFor(
+    return _getConcreteTypeFor(
         firstType.type.union(secondType.type, classWorld));
   }
 
-  bool selectorNeedsUpdate(TINode info, TypeMask mask) {
-    return info.type != mask;
+  bool matchesMask(TINode info, TypeMask mask) {
+    return info.type == mask;
   }
 
   TINode refineReceiver(
@@ -344,7 +343,10 @@ class TypeInformationSystem extends TypeSystem<TINode> {
     });
   }
 
-  TIConcrete getConcreteTypeFor(TypeMask mask) {
+  TIConcrete constantType(ConstantValue value) {
+    return _getConcreteTypeFor(constants.computeTypeMask(compiler, value));
+  }
+  TIConcrete _getConcreteTypeFor(TypeMask mask) {
     assert(mask != null);
     return concreteTypes.putIfAbsent(mask, () {
       return new TIConcrete(mask);
@@ -365,17 +367,17 @@ class TypeInformationSystem extends TypeSystem<TINode> {
   }
 
   TINode nonNullSubtype(ClassElement type) {
-    return getConcreteTypeFor(
+    return _getConcreteTypeFor(
         new TypeMask.nonNullSubtype(type.declaration, classWorld));
   }
 
   TINode nonNullSubclass(ClassElement type) {
-    return getConcreteTypeFor(
+    return _getConcreteTypeFor(
         new TypeMask.nonNullSubclass(type.declaration, classWorld));
   }
 
   TINode nonNullExact(ClassElement type) {
-    return getConcreteTypeFor(
+    return _getConcreteTypeFor(
         new TypeMask.nonNullExact(type.declaration, classWorld));
   }
 
@@ -895,7 +897,7 @@ class TypeGraphInferrerEngine
                 // Although we might find a better type, we have to keep
                 // the old type around to ensure that we get a complete view
                 // of the type graph and do not drop any flow edges.
-                TypeMask refinedType = computeTypeMask(compiler, value);
+                TypeMask refinedType = constants.computeTypeMask(compiler, value);
                 assert(TypeMask.assertIsNormalized(refinedType, classWorld));
                 type = new TINarrow(type, refinedType);
                 types.allocatedTypes.add(type);

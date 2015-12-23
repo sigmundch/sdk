@@ -12,6 +12,7 @@ import '../compiler.dart' show
     Compiler;
 import '../constants/constant_system.dart';
 import '../constants/expressions.dart';
+import '../constants/values.dart' show ConstantValue;
 import '../dart_types.dart';
 import '../elements/elements.dart';
 import '../resolution/operators.dart';
@@ -21,8 +22,6 @@ import '../resolution/tree_elements.dart' show
 import '../tree/tree.dart';
 import '../types/types.dart' show
     TypeMask;
-import '../types/constants.dart' show
-    computeTypeMask;
 import '../universe/call_structure.dart' show
     CallStructure;
 import '../universe/selector.dart' show
@@ -31,10 +30,11 @@ import '../util/util.dart';
 import '../world.dart' show
     ClassWorld;
 
-/**
- * The interface [InferrerVisitor] will use when working on types.
- */
-abstract class TypeSystem<T> {
+/// Interface to access an abstract domain from the inference algorithm. It
+/// defines how to retrieve abstract values for instances of a type, how to
+/// merge abstract values at phi-nodes, and how to narrow abstract values when
+/// we witness some precise infromation.
+abstract class AbstractDomain<T> {
   T get dynamicType;
   T get nullType;
   T get intType;
@@ -60,98 +60,70 @@ abstract class TypeSystem<T> {
   T stringLiteralType(DartString value);
   T boolLiteralType(LiteralBool value);
 
-  T nonNullSubtype(ClassElement type);
-  T nonNullSubclass(ClassElement type);
-  T nonNullExact(ClassElement type);
+  /// Returns an abstract value for a [constant].
+  T constantType(ConstantValue constant);
+
+  T nonNullSubtype(ClassElement element);
+  T nonNullSubclass(ClassElement element);
+  T nonNullExact(ClassElement element);
   T nonNullEmpty();
   bool isNull(T type);
   TypeMask newTypedSelector(T receiver, TypeMask mask);
 
-  T allocateList(T type,
-                 Node node,
-                 Element enclosing,
-                 [T elementType, int length]);
+  T allocateList(T type, Node node, Element enclosing,
+      [T elementType, int length]);
 
-  T allocateMap(T type, Node node, Element element, [List<T> keyType,
-                                                     List<T> valueType]);
+  T allocateMap(T type, Node node, Element element,
+      [List<T> keyType, List<T> valueType]);
 
   T allocateClosure(Node node, Element element);
 
-  /**
-   * Returns the least upper bound between [firstType] and
-   * [secondType].
-   */
-  T computeLUB(T firstType, T secondType);
+  /// Returns the least upper bound between [a] and [b].
+  T computeLUB(T a, T b);
 
-  /**
-   * Returns the intersection between [T] and [annotation].
-   * [isNullable] indicates whether the annotation implies a null
-   * type.
-   */
+  /// Return the intersection of [type] and [annotation]. Where, [isNullable]
+  /// indicates whether the annotation implies a null type.
   T narrowType(T type, DartType annotation, {bool isNullable: true});
 
-  /**
-   * Returns the non-nullable type [T].
-   */
+  /// Returns the non-nullable subset of [type].
   T narrowNotNull(T type);
 
-  /**
-   * Returns a new type that unions [firstInput] and [secondInput].
-   */
+  /// Returns the union of [firstInput] and [secondInput].
   T allocateDiamondPhi(T firstInput, T secondInput);
 
-  /**
-   * Returns a new type for holding the potential types of [element].
-   * [inputType] is the first incoming type of the phi.
-   */
-  T allocatePhi(Node node, Local variable, T inputType);
+  /// Returns the potential abstract values of [variable], where [input] is
+  /// the first incoming abstract value of the phi.
+  T allocatePhi(Node node, Local variable, T input);
 
+  /// Returns a the potential abstract values of [variable], where [input] is
+  /// the first incoming abstract value of the phi. [allocateLoopPhi] only
+  /// differs from [allocatePhi] in that it allows the underlying implementation
+  /// of [AbstractDomain] to differentiate Phi nodes due to loops from other
+  /// merging uses.
+  T allocateLoopPhi(Node node, Local variable, T input);
 
-  /**
-   * Returns a new type for holding the potential types of [element].
-   * [inputType] is the first incoming type of the phi. [allocateLoopPhi]
-   * only differs from [allocatePhi] in that it allows the underlying
-   * implementation of [TypeSystem] to differentiate Phi nodes due to loops
-   * from other merging uses.
-   */
-  T allocateLoopPhi(Node node, Local variable, T inputType);
+  /// Simplies the [phi] representing [variable]. For example, if [phi] has one
+  /// incoming input, an implementation of this method could just return that
+  /// incoming input type.
+  T simplifyPhi(Node node, Local variable, T phi);
 
-  /**
-   * Simplies the phi representing [element] and of the type
-   * [phiType]. For example, if this phi has one incoming input, an
-   * implementation of this method could just return that incoming
-   * input type.
-   */
-  T simplifyPhi(Node node, Local variable, T phiType);
+  /// Adds [input] as an input of [phi].
+  T addPhiInput(Local variable, T phi, T input);
 
-  /**
-   * Adds [newType] as an input of [phiType].
-   */
-  T addPhiInput(Local variable, T phiType, T newType);
+  // TODO(sigmund, johnniwinther): The three APIs below seem to break the
+  // abstraction: type-mask should be used here.
 
-  /**
-   * Returns `true` if `selector` should be updated to reflect the new
-   * `receiverType`.
-   */
-  bool selectorNeedsUpdate(T receiverType, TypeMask mask);
+  /// Returns whether [receiver] internally matches the information in [mask].
+  bool matchesMask(T receiver, TypeMask mask);
 
-  /**
-   * Returns a new receiver type for this [selector] applied to
-   * [receiverType].
-   *
-   * The option [isConditional] is true when [selector] was seen in a
-   * conditional send (e.g.  `a?.selector`), in which case the returned type may
-   * be null.
-   */
-  T refineReceiver(Selector selector,
-                   TypeMask mask,
-                   T receiverType,
-                   bool isConditional);
-
-  /**
-   * Returns the internal inferrer representation for [mask].
-   */
-  T getConcreteTypeFor(TypeMask mask);
+  /// Returns the intersection of [receiver] with those types matching
+  /// [selector].
+  ///
+  /// The option [isConditional] is true when [selector] was seen in a
+  /// conditional send (e.g.  `a?.selector`), in which case the returned type
+  /// may be null.
+  T refineReceiver(Selector selector, TypeMask mask, T receiver,
+      bool isConditional);
 }
 
 /**
@@ -242,7 +214,7 @@ class VariableScope<T> {
 }
 
 class FieldInitializationScope<T> {
-  final TypeSystem<T> types;
+  final AbstractDomain<T> types;
   Map<Element, T> fields;
   bool isThisExposed;
 
@@ -395,7 +367,7 @@ abstract class MinimalInferrerEngine<T> {
  */
 class LocalsHandler<T> {
   final Compiler compiler;
-  final TypeSystem<T> types;
+  final AbstractDomain<T> types;
   final MinimalInferrerEngine<T> inferrer;
   final VariableScope<T> locals;
   final Map<Local, Element> captured;
@@ -721,7 +693,7 @@ abstract class InferrerVisitor<T, E extends MinimalInferrerEngine<T>>
     implements SemanticSendVisitor<T, dynamic> {
   final Compiler compiler;
   final AstElement analyzedElement;
-  final TypeSystem<T> types;
+  final AbstractDomain<T> types;
   final E inferrer;
   final Map<JumpTarget, List<LocalsHandler<T>>> breaksFor =
       new Map<JumpTarget, List<LocalsHandler<T>>>();
@@ -858,16 +830,14 @@ abstract class InferrerVisitor<T, E extends MinimalInferrerEngine<T>>
     ConstantSystem constantSystem = compiler.backend.constantSystem;
     // The JavaScript backend may turn this literal into an integer at
     // runtime.
-    return types.getConcreteTypeFor(
-        computeTypeMask(compiler, constantSystem.createDouble(node.value)));
+    return types.constantType(constantSystem.createDouble(node.value));
   }
 
   T visitLiteralInt(LiteralInt node) {
     ConstantSystem constantSystem = compiler.backend.constantSystem;
     // The JavaScript backend may turn this literal into a double at
     // runtime.
-    return types.getConcreteTypeFor(
-        computeTypeMask(compiler, constantSystem.createInt(node.value)));
+    return types.constantType(constantSystem.createInt(node.value));
   }
 
   T visitLiteralList(LiteralList node) {
