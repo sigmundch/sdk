@@ -4,6 +4,8 @@
 
 library type_graph_inferrer;
 
+import 'dart:io';
+
 import 'dart:collection' show Queue;
 
 import '../common.dart';
@@ -666,6 +668,10 @@ class TypeGraphInferrerEngine
     if (compiler.options.verbose) {
       compiler.progress.reset();
     }
+
+    // interactive-progress-patch
+    var timer = new Stopwatch()..start();
+
     sortResolvedAsts().forEach((ResolvedAst resolvedAst) {
       if (compiler.shouldPrintProgress) {
         reporter.log('Added $addedInGraph elements in inferencing graph.');
@@ -681,7 +687,19 @@ class TypeGraphInferrerEngine
     TypeGraphDump dump = debug.PRINT_GRAPH ? new TypeGraphDump(this) : null;
 
     dump?.beforeAnalysis();
+
+    // interactive-progress-patch
+    timer.stop();
+    print('graph creation: ${timer.elapsedMilliseconds}ms');
+    timer = new Stopwatch()..start();
+
     buildWorkQueue();
+
+    // interactive-progress-patch
+    timer.stop();
+    print('queue creation: ${timer.elapsedMilliseconds}ms');
+    print('work queue: ${workQueue.length} items');
+
     refine();
 
     // Try to infer element types of lists and compute their escape information.
@@ -928,11 +946,33 @@ class TypeGraphInferrerEngine
   }
 
   void refine() {
+    // interactive-progress-patch
+    var total = new Stopwatch()..start();
+    var progress = new Stopwatch()..start();
+
     while (!workQueue.isEmpty) {
       if (compiler.shouldPrintProgress) {
         reporter.log('Inferred $overallRefineCount types.');
         compiler.progress.reset();
       }
+
+      // interactive-progress-patch
+      if (progress.elapsedMilliseconds > 500) {
+        var time = total.elapsedMilliseconds / 1000;
+        var rate = overallRefineCount / total.elapsedMilliseconds;
+        var rateColor = rate > 30 ? 32 : (rate > 10 ? 33 : 31);
+        var s = new StringBuffer('\r\x1b[48;5;40m\x1b[30m==>\x1b[0m Inferred ')
+          ..write(overallRefineCount)
+          ..write(' types. Elapsed time: ')
+          ..write(time.toStringAsFixed(2))
+          ..write(' s. Refinement rate: ')
+          ..write('\x1b[${rateColor}m')
+          ..write(rate.toStringAsFixed(2))
+          ..write('\x1b[0m r/ms');
+        stdout.write('$s');
+        progress.reset();
+      }
+
       TypeInformation info = workQueue.remove();
       TypeMask oldType = info.type;
       TypeMask newType = info.refine(this);
@@ -956,6 +996,11 @@ class TypeGraphInferrerEngine
         }
       }
     }
+
+    // interactive-progress-patch
+    total.stop();
+    progress.stop();
+    print('\nrefine phase: ${total.elapsedMilliseconds}ms.');
   }
 
   void buildWorkQueue() {
