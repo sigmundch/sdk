@@ -10,7 +10,7 @@ import '../dart_types.dart';
 import '../diagnostics/source_span.dart';
 import '../elements/elements.dart';
 import '../tree/tree.dart';
-import '../types/types.dart' show TypeMask;
+import '../types/types.dart' show GlobalTypeInferenceElementData;
 import '../universe/selector.dart' show Selector;
 import '../util/util.dart';
 import 'secret_tree_element.dart' show getTreeElement, setTreeElement;
@@ -19,6 +19,7 @@ import 'send_structure.dart';
 abstract class TreeElements {
   AnalyzableElement get analyzedElement;
   Iterable<SourceSpan> get superUses;
+  GlobalTypeInferenceElementData get inferenceData;
 
   void forEachConstantNode(f(Node n, ConstantExpression c));
 
@@ -36,21 +37,9 @@ abstract class TreeElements {
   Selector getGetterSelectorInComplexSendSet(SendSet node);
   Selector getOperatorSelectorInComplexSendSet(SendSet node);
   DartType getType(Node node);
-  TypeMask getTypeMask(Node node);
-  TypeMask getGetterTypeMaskInComplexSendSet(SendSet node);
-  TypeMask getOperatorTypeMaskInComplexSendSet(SendSet node);
-  void setTypeMask(Node node, TypeMask mask);
-  void setGetterTypeMaskInComplexSendSet(SendSet node, TypeMask mask);
-  void setOperatorTypeMaskInComplexSendSet(SendSet node, TypeMask mask);
 
   /// Returns the for-in loop variable for [node].
   Element getForInVariable(ForIn node);
-  TypeMask getIteratorTypeMask(ForIn node);
-  TypeMask getMoveNextTypeMask(ForIn node);
-  TypeMask getCurrentTypeMask(ForIn node);
-  void setIteratorTypeMask(ForIn node, TypeMask mask);
-  void setMoveNextTypeMask(ForIn node, TypeMask mask);
-  void setCurrentTypeMask(ForIn node, TypeMask mask);
   void setConstant(Node node, ConstantExpression constant);
   ConstantExpression getConstant(Node node);
 
@@ -107,11 +96,13 @@ abstract class TreeElements {
 class TreeElementMapping extends TreeElements {
   final AnalyzableElement analyzedElement;
   Map<Spannable, Selector> _selectors;
-  Map<Spannable, TypeMask> _typeMasks;
   Map<Node, DartType> _types;
 
   Map<Node, DartType> _typesCache;
   Map<Node, DartType> get typesCache => _typesCache ??= <Node, DartType>{};
+
+  GlobalTypeInferenceElementData inferenceData =
+      new GlobalTypeInferenceElementData();
 
   Setlet<SourceSpan> _superUses;
   Map<Node, ConstantExpression> _constants;
@@ -440,79 +431,6 @@ class TreeElementMapping extends TreeElements {
   LabelDefinition getTargetLabel(GotoStatement node) {
     assert(node.target != null);
     return _targetLabels != null ? _targetLabels[node] : null;
-  }
-
-  TypeMask _getTypeMask(Spannable node) {
-    return _typeMasks != null ? _typeMasks[node] : null;
-  }
-
-  void _setTypeMask(Spannable node, TypeMask mask) {
-    if (_typeMasks == null) {
-      _typeMasks = new Maplet<Spannable, TypeMask>();
-    }
-    _typeMasks[node] = mask;
-  }
-
-  @override
-  void setTypeMask(Node node, TypeMask mask) {
-    _setTypeMask(node, mask);
-  }
-
-  @override
-  TypeMask getTypeMask(Node node) => _getTypeMask(node);
-
-  @override
-  void setGetterTypeMaskInComplexSendSet(SendSet node, TypeMask mask) {
-    _setTypeMask(node.selector, mask);
-  }
-
-  @override
-  TypeMask getGetterTypeMaskInComplexSendSet(SendSet node) {
-    return _getTypeMask(node.selector);
-  }
-
-  @override
-  void setOperatorTypeMaskInComplexSendSet(SendSet node, TypeMask mask) {
-    _setTypeMask(node.assignmentOperator, mask);
-  }
-
-  @override
-  TypeMask getOperatorTypeMaskInComplexSendSet(SendSet node) {
-    return _getTypeMask(node.assignmentOperator);
-  }
-
-  // The following methods set selectors on the "for in" node. Since
-  // we're using three selectors, we need to use children of the node,
-  // and we arbitrarily choose which ones.
-
-  @override
-  void setIteratorTypeMask(ForIn node, TypeMask mask) {
-    _setTypeMask(node, mask);
-  }
-
-  @override
-  TypeMask getIteratorTypeMask(ForIn node) {
-    return _getTypeMask(node);
-  }
-
-  @override
-  void setMoveNextTypeMask(ForIn node, TypeMask mask) {
-    _setTypeMask(node.forToken, mask);
-  }
-
-  @override
-  TypeMask getMoveNextTypeMask(ForIn node) {
-    return _getTypeMask(node.forToken);
-  }
-
-  @override
-  void setCurrentTypeMask(ForIn node, TypeMask mask) {
-    _setTypeMask(node.inToken, mask);
-  }
-
-  @override
-  TypeMask getCurrentTypeMask(ForIn node) {
-    return _getTypeMask(node.inToken);
   }
 
   void registerNativeData(Node node, dynamic nativeData) {
