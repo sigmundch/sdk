@@ -811,7 +811,7 @@ class SimpleTypeInferrerVisitor<T>
     TypeMask getterMask = elements.inferenceData.typeOfGetter(node);
     Selector operatorSelector =
         elements.getOperatorSelectorInComplexSendSet(node);
-    TypeMask operatorMask = elements.inferenceData.getTypeOfOperator(node);
+    TypeMask operatorMask = elements.inferenceData.typeOfOperator(node);
     Selector setterSelector = elements.getSelector(node);
     TypeMask setterMask = elements.inferenceData.typeOfSend(node);
 

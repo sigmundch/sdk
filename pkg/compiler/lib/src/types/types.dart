@@ -217,7 +217,7 @@ class GlobalTypeInferenceTask extends CompilerTask {
   final String name = 'Type inference';
 
   final Compiler compiler;
-  TypesGraphInferrer typesInferrer;
+  TypeGraphInferrer typesInferrer;
   CommonMasks masks;
   GlobalTypeInferenceResults results;
 

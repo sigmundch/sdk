@@ -141,7 +141,14 @@ class SsaBuilder extends ast.Visitor
   // used only for codegen, but currently we want to experiment using it for
   // code-analysis too.
   final CodegenRegistry registry;
+
+  /// All results from the global type-inference analysis.
   final GlobalTypeInferenceResults inferenceResults;
+
+  /// Results from the global type-inference analysis corresponding to the
+  /// current [resolvedAst].
+  GlobalTypeInferenceElementResults elementInferenceResults;
+
   final JavaScriptBackend backend;
   final ConstantSystem constantSystem;
   final RuntimeTypes rti;
@@ -193,6 +200,8 @@ class SsaBuilder extends ast.Visitor
         this.inferenceResults = backend.compiler.globalInference.results {
     assert(target.isImplementation);
     compiler = backend.compiler;
+    elementInferenceResults = inferenceResults.elementResults[target];
+    assert(elementInferenceResults != null);
     graph.element = target;
     sourceElementStack.add(target);
     sourceInformationBuilder =
@@ -213,8 +222,6 @@ class SsaBuilder extends ast.Visitor
 
   /// Reference to resolved elements in [target]'s AST.
   TreeElements get elements => resolvedAst.elements;
-  GlobalTypeInferenceElementResult get elementInferenceResults =>
-      inferenceResults.elementResults[resolvedAst.element.implementation];
 
   @override
   SemanticSendVisitor get sendVisitor => this;
@@ -438,7 +445,7 @@ class SsaBuilder extends ast.Visitor
       // A generative constructor body is not seen by global analysis,
       // so we should not query for its type.
       if (!element.isGenerativeConstructorBody) {
-        if (elementInferenceResults.throwsAlways) {
+        if (inferenceResults.elementResults[element].throwsAlways) {
           isReachable = false;
           return false;
         }
@@ -860,6 +867,7 @@ class SsaBuilder extends ast.Visitor
     returnLocal = state.oldReturnLocal;
     inTryStatement = state.inTryStatement;
     resolvedAst = state.oldResolvedAst;
+    elementInferenceResults = state.oldElementInferenceResults;
     returnType = state.oldReturnType;
     assert(stack.isEmpty);
     stack = state.oldStack;
@@ -992,6 +1000,8 @@ class SsaBuilder extends ast.Visitor
       // Build the initializers in the context of the new constructor.
       ResolvedAst oldResolvedAst = resolvedAst;
       resolvedAst = callee.resolvedAst;
+      final oldElementInferenceResults = elementInferenceResults;
+      elementInferenceResults = inferenceResults.elementResults[callee];
       ClosureClassMap oldClosureData = localsHandler.closureData;
       ClosureClassMap newClosureData =
           compiler.closureToClassMapper.getClosureToClassMapping(resolvedAst);
@@ -1002,6 +1012,7 @@ class SsaBuilder extends ast.Visitor
       buildInitializers(callee, constructorResolvedAsts, fieldValues);
       localsHandler.closureData = oldClosureData;
       resolvedAst = oldResolvedAst;
+      elementInferenceResults = oldElementInferenceResults;
     });
   }
 
@@ -1164,11 +1175,14 @@ class SsaBuilder extends ast.Visitor
           ast.Node right = initializer;
           ResolvedAst savedResolvedAst = resolvedAst;
           resolvedAst = fieldResolvedAst;
+          final oldElementInferenceResults = elementInferenceResults;
+          elementInferenceResults = inferenceResults.elementResults[member];
           // In case the field initializer uses closures, run the
           // closure to class mapper.
           compiler.closureToClassMapper.getClosureToClassMapping(resolvedAst);
           inlinedFrom(fieldResolvedAst, () => right.accept(this));
           resolvedAst = savedResolvedAst;
+          elementInferenceResults = oldElementInferenceResults;
           fieldValues[member] = pop();
         }
       });
@@ -6631,8 +6645,10 @@ class SsaBuilder extends ast.Visitor
         stack,
         localsHandler,
         inTryStatement,
-        isCalledOnce(function));
+        isCalledOnce(function),
+        elementInferenceResults);
     resolvedAst = functionResolvedAst;
+    elementInferenceResults = inferenceResults.elementResults[function];
     inliningStack.add(state);
 
     // Setting up the state of the (AST) builder is performed even when the
@@ -6953,6 +6969,7 @@ class AstInliningState extends InliningState {
   final LocalsHandler oldLocalsHandler;
   final bool inTryStatement;
   final bool allFunctionsCalledOnce;
+  final GlobalTypeInferenceElementResults oldElementInferenceResults;
 
   AstInliningState(
       FunctionElement function,
@@ -6962,7 +6979,8 @@ class AstInliningState extends InliningState {
       this.oldStack,
       this.oldLocalsHandler,
       this.inTryStatement,
-      this.allFunctionsCalledOnce)
+      this.allFunctionsCalledOnce,
+      this.oldElementInferenceResults)
       : super(function);
 }
 
