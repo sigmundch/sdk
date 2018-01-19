@@ -1242,8 +1242,11 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
         deprecated_addCompileTimeError(
             charOffset, "Not a constant expression.");
       }
-      return new TypeDeclarationAccessor(
+      FastaAccessor accessor = new TypeDeclarationAccessor(
           this, prefix, charOffset, builder, name, token);
+      return (prefix?.deferred == true)
+          ? new DeferredAccessor(this, token, prefix, accessor)
+          : accessor;
     } else if (builder.isLocal) {
       if (constantExpressionRequired &&
           !builder.isConst &&
@@ -3657,11 +3660,11 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
   }
 
   @override
-  Expression makeDeferredCheck(Expression expression, PrefixBuilder prefix) {
-    return new Let(
-        new VariableDeclaration.forValue(
-            new CheckLibraryIsLoaded(prefix.dependency)),
-        expression);
+  Expression wrapInDeferredCheck(Expression expression, PrefixBuilder prefix) {
+    var check = new VariableDeclaration.forValue(
+        new CheckLibraryIsLoaded(prefix.dependency))
+      ..fileOffset = expression.fileOffset;
+    return new Let(check, expression);
   }
 }
 

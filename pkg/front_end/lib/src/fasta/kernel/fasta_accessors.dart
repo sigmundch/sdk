@@ -139,7 +139,7 @@ abstract class BuilderHelper {
   StaticGet makeStaticGet(Member readTarget, Token token,
       {String prefixName, int targetOffset: -1, Class targetClass});
 
-  Expression makeDeferredCheck(Expression expression, PrefixBuilder prefix);
+  Expression wrapInDeferredCheck(Expression expression, PrefixBuilder prefix);
 
   dynamic deprecated_addCompileTimeError(int charOffset, String message);
 
@@ -839,7 +839,7 @@ class LoadLibraryAccessor extends kernel.LoadLibraryAccessor
 
 class DeferredAccessor extends kernel.DeferredAccessor with FastaAccessor {
   DeferredAccessor(BuilderHelper helper, Token token, PrefixBuilder builder,
-      StaticAccessor expression)
+      FastaAccessor expression)
       : super(helper, token, builder, expression);
 
   String get plainNameForRead {
@@ -847,11 +847,11 @@ class DeferredAccessor extends kernel.DeferredAccessor with FastaAccessor {
         "deferredAccessor.plainNameForRead", offsetForToken(token), uri);
   }
 
-  StaticAccessor get staticAccessor => super.staticAccessor;
+  FastaAccessor get accessor => super.accessor;
 
   Expression doInvocation(int offset, Arguments arguments) {
-    return helper.makeDeferredCheck(
-        staticAccessor.doInvocation(offset, arguments), builder);
+    return helper.wrapInDeferredCheck(
+        accessor.doInvocation(offset, arguments), builder);
   }
 }
 
