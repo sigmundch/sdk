@@ -2138,6 +2138,8 @@ compile_time_constant_static5_test/25: MissingCompileTimeError
 compile_time_constant_static_test/01: MissingCompileTimeError
 compile_time_constant_static_test/02: MissingCompileTimeError
 compile_time_constant_static_test/03: MissingCompileTimeError
+conditional_import_string_test: Crash # tests/language_2/conditional_import_string_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+conditional_import_test: Crash # tests/language_2/conditional_import_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 conditional_method_invocation_test/05: MissingCompileTimeError
 conditional_method_invocation_test/06: MissingCompileTimeError
 conditional_method_invocation_test/07: MissingCompileTimeError
@@ -2236,19 +2238,27 @@ covariant_subtyping_unsafe_call2_test: RuntimeError
 covariant_subtyping_unsafe_call3_test: RuntimeError
 crash_6725_test/01: MissingCompileTimeError
 cyclic_constructor_test/01: Crash # Issue 30856
+deferred_constraints_constants_test/constructor1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_constructor1.dart:54:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/constructor2: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_constructor2.dart:55:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/default_argument1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_default_argument1.dart:24:13: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_metadata1.dart:38:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata3: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_metadata3.dart:44:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_constants_test/none: CompileTimeError
 deferred_constraints_constants_test/reference_after_load: CompileTimeError
 deferred_constraints_type_annotation_test/as_operation: MissingCompileTimeError
 deferred_constraints_type_annotation_test/catch_check: MissingCompileTimeError
 deferred_constraints_type_annotation_test/is_check: MissingCompileTimeError
-deferred_constraints_type_annotation_test/new_before_load: MissingCompileTimeError
+deferred_constraints_type_annotation_test/new: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new.dart:30:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_before_load: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_before_load.dart:18:23: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_generic1.dart:31:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/new_generic2: MissingCompileTimeError
-deferred_constraints_type_annotation_test/new_generic3: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation1: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation_generic1: MissingCompileTimeError
+deferred_constraints_type_annotation_test/new_generic3: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_generic3.dart:35:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/static_method: RuntimeError
+deferred_constraints_type_annotation_test/type_annotation1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation1.dart:25:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation_generic1.dart:26:27: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/type_annotation_generic2: MissingCompileTimeError
 deferred_constraints_type_annotation_test/type_annotation_generic3: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation_generic4: MissingCompileTimeError
+deferred_constraints_type_annotation_test/type_annotation_generic4: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation_generic4.dart:29:30: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/type_annotation_null: MissingCompileTimeError
 deferred_constraints_type_annotation_test/type_annotation_top_level: MissingCompileTimeError
 deferred_inheritance_constraints_test/extends: MissingCompileTimeError
@@ -2256,9 +2266,12 @@ deferred_inheritance_constraints_test/implements: MissingCompileTimeError
 deferred_inheritance_constraints_test/mixin: MissingCompileTimeError
 deferred_load_constants_test/none: RuntimeError
 deferred_load_library_wrong_args_test/01: MissingRuntimeError
-deferred_not_loaded_check_test: RuntimeError
+deferred_mixin_test: Crash # tests/language_2/deferred_mixin_test.dart:29:42: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_no_such_method_test: Crash # tests/language_2/deferred_no_such_method_test.dart:13:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_not_loaded_check_test: Crash # tests/language_2/deferred_not_loaded_check_test.dart:49:15: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_redirecting_factory_test: RuntimeError
-deferred_super_dependency_test/01: MissingCompileTimeError
+deferred_static_seperate_test: Crash # tests/language_2/deferred_static_seperate_test.dart:17:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_super_dependency_test/01: Crash # out/ReleaseX64/generated_tests/language_2/deferred_super_dependency_test_01.dart:14:48: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 double_int_to_string_test: RuntimeError
 double_to_string_as_exponential2_test/01: MissingCompileTimeError
 double_to_string_as_exponential2_test/02: MissingCompileTimeError
@@ -2580,6 +2593,7 @@ regress_13462_0_test: CompileTimeError
 regress_13462_1_test: CompileTimeError
 regress_18535_test: CompileTimeError
 regress_20394_test/01: MissingCompileTimeError
+regress_22443_test: Crash # tests/language_2/regress_22443_test.dart:12:16: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 regress_23408_test: Crash # Assertion failure: Missing scope info for j:method(_loadLibraryWrapper).
 regress_24283_test: RuntimeError
 regress_27617_test/1: Crash # Assertion failure: Unexpected constructor j:constructor(Foo._) in ConstructorDataImpl._getConstructorConstant
@@ -2729,8 +2743,8 @@ void_type_usage_test/conditional2_conditional: Crash # 'package:front_end/src/fa
 void_type_usage_test/conditional2_dynamic_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_for: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_literal_list_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
-void_type_usage_test/conditional2_literal_map_value_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_literal_map_value_init2: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
+void_type_usage_test/conditional2_literal_map_value_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_null_equals2: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_parens: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional2_return: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
@@ -2746,8 +2760,8 @@ void_type_usage_test/conditional3_conditional: Crash # 'package:front_end/src/fa
 void_type_usage_test/conditional3_dynamic_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_for: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_literal_list_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
-void_type_usage_test/conditional3_literal_map_value_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_literal_map_value_init2: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
+void_type_usage_test/conditional3_literal_map_value_init: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_null_equals2: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_parens: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional3_return: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
@@ -2758,8 +2772,8 @@ void_type_usage_test/conditional3_void_init: Crash # 'package:front_end/src/fast
 void_type_usage_test/conditional_do_while: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional_for_in: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
 void_type_usage_test/conditional_while: Crash # 'package:front_end/src/fasta/type_inference/type_schema_environment.dart': Failed assertion: line 214 pos 12: 'false': is not true.
-void_type_usage_test/field_assign: CompileTimeError
 void_type_usage_test/field_assign2: CompileTimeError
+void_type_usage_test/field_assign: CompileTimeError
 void_type_usage_test/final_local_as: CompileTimeError
 void_type_usage_test/final_local_for: CompileTimeError
 void_type_usage_test/final_local_return_to_void: CompileTimeError
@@ -2902,6 +2916,8 @@ compile_time_constant_static5_test/25: MissingCompileTimeError
 compile_time_constant_static_test/01: MissingCompileTimeError
 compile_time_constant_static_test/02: MissingCompileTimeError
 compile_time_constant_static_test/03: MissingCompileTimeError
+conditional_import_string_test: Crash # tests/language_2/conditional_import_string_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+conditional_import_test: Crash # tests/language_2/conditional_import_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 conditional_method_invocation_test/05: MissingCompileTimeError
 conditional_method_invocation_test/06: MissingCompileTimeError
 conditional_method_invocation_test/07: MissingCompileTimeError
@@ -3000,19 +3016,27 @@ covariant_subtyping_unsafe_call2_test: RuntimeError
 covariant_subtyping_unsafe_call3_test: RuntimeError
 crash_6725_test/01: MissingCompileTimeError
 cyclic_constructor_test/01: Crash # Issue 30856
+deferred_constraints_constants_test/constructor1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_constructor1.dart:54:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/constructor2: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_constructor2.dart:55:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/default_argument1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_default_argument1.dart:24:13: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_metadata1.dart:38:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata3: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_constants_test_metadata3.dart:44:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_constants_test/none: CompileTimeError
 deferred_constraints_constants_test/reference_after_load: CompileTimeError
 deferred_constraints_type_annotation_test/as_operation: MissingCompileTimeError
 deferred_constraints_type_annotation_test/catch_check: MissingCompileTimeError
 deferred_constraints_type_annotation_test/is_check: MissingCompileTimeError
-deferred_constraints_type_annotation_test/new_before_load: MissingCompileTimeError
+deferred_constraints_type_annotation_test/new: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new.dart:30:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_before_load: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_before_load.dart:18:23: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_generic1.dart:31:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/new_generic2: MissingCompileTimeError
-deferred_constraints_type_annotation_test/new_generic3: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation1: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation_generic1: MissingCompileTimeError
+deferred_constraints_type_annotation_test/new_generic3: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_new_generic3.dart:35:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/static_method: RuntimeError
+deferred_constraints_type_annotation_test/type_annotation1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation1.dart:25:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic1: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation_generic1.dart:26:27: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/type_annotation_generic2: MissingCompileTimeError
 deferred_constraints_type_annotation_test/type_annotation_generic3: MissingCompileTimeError
-deferred_constraints_type_annotation_test/type_annotation_generic4: MissingCompileTimeError
+deferred_constraints_type_annotation_test/type_annotation_generic4: Crash # out/ReleaseX64/generated_tests/language_2/deferred_constraints_type_annotation_test_type_annotation_generic4.dart:29:30: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_type_annotation_test/type_annotation_null: MissingCompileTimeError
 deferred_constraints_type_annotation_test/type_annotation_top_level: MissingCompileTimeError
 deferred_inheritance_constraints_test/extends: MissingCompileTimeError
@@ -3020,9 +3044,12 @@ deferred_inheritance_constraints_test/implements: MissingCompileTimeError
 deferred_inheritance_constraints_test/mixin: MissingCompileTimeError
 deferred_load_constants_test/none: RuntimeError
 deferred_load_library_wrong_args_test/01: MissingRuntimeError
-deferred_not_loaded_check_test: RuntimeError
+deferred_mixin_test: Crash # tests/language_2/deferred_mixin_test.dart:29:42: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_no_such_method_test: Crash # tests/language_2/deferred_no_such_method_test.dart:13:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_not_loaded_check_test: Crash # tests/language_2/deferred_not_loaded_check_test.dart:49:15: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_redirecting_factory_test: RuntimeError
-deferred_super_dependency_test/01: MissingCompileTimeError
+deferred_static_seperate_test: Crash # tests/language_2/deferred_static_seperate_test.dart:17:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_super_dependency_test/01: Crash # out/ReleaseX64/generated_tests/language_2/deferred_super_dependency_test_01.dart:14:48: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 double_int_to_string_test: RuntimeError
 double_to_string_as_exponential2_test/01: MissingCompileTimeError
 double_to_string_as_exponential2_test/02: MissingCompileTimeError
@@ -3334,6 +3361,7 @@ regress_13462_1_test: CompileTimeError
 regress_18535_test: CompileTimeError
 regress_20394_test/01: MissingCompileTimeError
 regress_21795_test: RuntimeError
+regress_22443_test: Crash # tests/language_2/regress_22443_test.dart:12:16: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 regress_23408_test: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 regress_24283_test: RuntimeError, OK # Requires 64 bit numbers.
 regress_27617_test/1: Crash # Assertion failure: Unexpected constructor j:constructor(Foo._) in ConstructorDataImpl._getConstructorConstant
@@ -3478,8 +3506,8 @@ void_type_usage_test/call_as: CompileTimeError
 void_type_usage_test/call_for: CompileTimeError
 void_type_usage_test/call_return_to_void: CompileTimeError
 void_type_usage_test/call_stmt: CompileTimeError
-void_type_usage_test/field_assign: CompileTimeError
 void_type_usage_test/field_assign2: CompileTimeError
+void_type_usage_test/field_assign: CompileTimeError
 void_type_usage_test/final_local_as: CompileTimeError
 void_type_usage_test/final_local_for: CompileTimeError
 void_type_usage_test/final_local_return_to_void: CompileTimeError

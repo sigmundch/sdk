@@ -812,6 +812,8 @@ class_literal_test/07: RuntimeError
 closure_in_field_test/01: RuntimeError
 closure_in_field_test/02: RuntimeError
 closure_self_reference_test: Crash # 'file:*/pkg/compiler/lib/src/ssa/nodes.dart': Failed assertion: line 641 pos 12: 'isClosed()': is not true.
+conditional_import_string_test: Crash # tests/language/conditional_import_string_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+conditional_import_test: Crash # tests/language/conditional_import_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 config_import_test: RuntimeError
 const_error_multiply_initialized_test/02: MissingCompileTimeError
 const_error_multiply_initialized_test/04: MissingCompileTimeError
@@ -836,18 +838,32 @@ constructor_redirect2_negative_test: Crash # Issue 30856
 constructor_redirect2_test/01: MissingCompileTimeError
 constructor_redirect_test/01: Crash # Assertion failure: Cannot find value Instance of 'ThisLocal' in (local(A.named2#x), local(A.named2#y), local(A.named2#z)) for j:constructor(A.named2).
 cyclic_constructor_test/01: Crash # Issue 30856
+deferred_constraints_constants_test/constructor1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_constructor1.dart:54:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/constructor2: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_constructor2.dart:55:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/default_argument1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_default_argument1.dart:24:13: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_metadata1.dart:38:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata3: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_metadata3.dart:44:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_constants_test/none: CompileTimeError
 deferred_constraints_constants_test/reference_after_load: CompileTimeError
-deferred_constraints_type_annotation_test/as_operation: RuntimeError
-deferred_constraints_type_annotation_test/catch_check: RuntimeError
-deferred_constraints_type_annotation_test/is_check: RuntimeError
+deferred_constraints_type_annotation_test/new: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new.dart:30:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_before_load: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_before_load.dart:18:23: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_generic1.dart:31:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic3: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_generic3.dart:35:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/static_method: RuntimeError
+deferred_constraints_type_annotation_test/type_annotation1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation1.dart:25:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation_generic1.dart:26:27: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic4: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation_generic4.dart:29:30: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_inheritance_constraints_test/extends: MissingCompileTimeError
 deferred_inheritance_constraints_test/implements: MissingCompileTimeError
 deferred_inheritance_constraints_test/mixin: MissingCompileTimeError
 deferred_load_constants_test/none: RuntimeError
 deferred_load_library_wrong_args_test/01: MissingRuntimeError
-deferred_not_loaded_check_test: RuntimeError
+deferred_mixin_test: Crash # tests/language/deferred_mixin_test.dart:29:42: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_no_such_method_test: Crash # tests/language/deferred_no_such_method_test.dart:13:31: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_not_loaded_check_test: Crash # tests/language/deferred_not_loaded_check_test.dart:49:15: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_redirecting_factory_test: RuntimeError
+deferred_static_seperate_test: Crash # tests/language/deferred_static_seperate_test.dart:17:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_super_dependency_test/01: Crash # out/ReleaseX64/generated_tests/language/deferred_super_dependency_test_01.dart:14:31: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 double_int_to_string_test: RuntimeError
 duplicate_export_negative_test: Fail
 duplicate_implements_test/01: MissingCompileTimeError
@@ -1071,6 +1087,7 @@ regress_13494_test: RuntimeError
 regress_17382_test: RuntimeError
 regress_18535_test: CompileTimeError
 regress_20394_test/01: MissingCompileTimeError
+regress_22443_test: Crash # tests/language/regress_22443_test.dart:12:16: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 regress_22936_test/01: RuntimeError
 regress_24283_test: RuntimeError
 regress_27572_test: RuntimeError
@@ -1135,6 +1152,8 @@ class_literal_test/03: RuntimeError
 class_literal_test/07: RuntimeError
 closure_in_field_test/01: RuntimeError
 closure_in_field_test/02: RuntimeError
+conditional_import_string_test: Crash # tests/language/conditional_import_string_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+conditional_import_test: Crash # tests/language/conditional_import_test.dart:24:33: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 config_import_test: RuntimeError
 const_error_multiply_initialized_test/02: MissingCompileTimeError
 const_error_multiply_initialized_test/04: MissingCompileTimeError
@@ -1165,14 +1184,24 @@ cyclic_type_test/01: RuntimeError
 cyclic_type_test/02: RuntimeError
 cyclic_type_test/03: RuntimeError
 cyclic_type_test/04: RuntimeError
+deferred_constraints_constants_test/constructor1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_constructor1.dart:54:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/constructor2: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_constructor2.dart:55:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/default_argument1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_default_argument1.dart:24:13: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_metadata1.dart:38:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_constants_test/metadata3: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_constants_test_metadata3.dart:44:6: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_constraints_constants_test/none: CompileTimeError
 deferred_constraints_constants_test/reference_after_load: CompileTimeError
-deferred_constraints_type_annotation_test/as_operation: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 deferred_constraints_type_annotation_test/as_operation: RuntimeError
-deferred_constraints_type_annotation_test/catch_check: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 deferred_constraints_type_annotation_test/catch_check: RuntimeError
-deferred_constraints_type_annotation_test/is_check: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 deferred_constraints_type_annotation_test/is_check: RuntimeError
+deferred_constraints_type_annotation_test/new: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new.dart:30:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_before_load: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_before_load.dart:18:23: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_generic1.dart:31:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/new_generic3: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_new_generic3.dart:35:22: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/static_method: RuntimeError
+deferred_constraints_type_annotation_test/type_annotation1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation1.dart:25:24: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic1: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation_generic1.dart:26:27: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_constraints_type_annotation_test/type_annotation_generic4: Crash # out/ReleaseX64/generated_tests/language/deferred_constraints_type_annotation_test_type_annotation_generic4.dart:29:30: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_inheritance_constraints_test/extends: MissingCompileTimeError
 deferred_inheritance_constraints_test/implements: MissingCompileTimeError
 deferred_inheritance_constraints_test/mixin: MissingCompileTimeError
@@ -1180,9 +1209,13 @@ deferred_load_constants_test/none: Crash # NoSuchMethodError: The getter 'closur
 deferred_load_constants_test/none: RuntimeError
 deferred_load_library_wrong_args_test/01: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 deferred_load_library_wrong_args_test/01: MissingRuntimeError
-deferred_not_loaded_check_test: RuntimeError
+deferred_mixin_test: Crash # tests/language/deferred_mixin_test.dart:29:42: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_no_such_method_test: Crash # tests/language/deferred_no_such_method_test.dart:13:31: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_not_loaded_check_test: Crash # tests/language/deferred_not_loaded_check_test.dart:49:15: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 deferred_redirecting_factory_test: Crash # NoSuchMethodError: The getter 'closureClassEntity' was called on null.
 deferred_redirecting_factory_test: RuntimeError
+deferred_static_seperate_test: Crash # tests/language/deferred_static_seperate_test.dart:17:32: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
+deferred_super_dependency_test/01: Crash # out/ReleaseX64/generated_tests/language/deferred_super_dependency_test_01.dart:14:31: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 double_int_to_string_test: RuntimeError
 duplicate_export_negative_test: Fail
 duplicate_implements_test/01: MissingCompileTimeError
@@ -1408,6 +1441,7 @@ regress_17382_test: RuntimeError
 regress_18535_test: CompileTimeError
 regress_20394_test/01: MissingCompileTimeError
 regress_21795_test: RuntimeError
+regress_22443_test: Crash # tests/language/regress_22443_test.dart:12:16: Internal problem: Unsupported operation: 'deferredAccessor.plainNameForRead'.
 regress_22936_test/01: RuntimeError
 regress_24283_test: RuntimeError
 regress_27572_test: RuntimeError
