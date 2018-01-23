@@ -8,4 +8,3 @@ main() {}
 test(x) {
   x as lib.C;
 }
-

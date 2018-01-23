@@ -8,4 +8,3 @@ main() {}
 test(x) {
   print(x is lib.C);
 }
-

@@ -8,4 +8,3 @@ main() => test();
 test() {
   lib.C x = null;
 }
-

@@ -1853,10 +1853,12 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
       }
     }
     if (name is DeferredAccessor) {
-      String displayName = debugName(name.builder.name,
-          getNodeName(name.accessor));
-      addCompileTimeError(fasta.templateDeferredTypeAnnotation.withArguments(displayName),
-          beginToken.charOffset, endToken.charOffset - beginToken.charOffset);
+      String displayName =
+          debugName(name.builder.name, getNodeName(name.accessor));
+      addCompileTimeError(
+          fasta.templateDeferredTypeAnnotation.withArguments(displayName),
+          beginToken.charOffset,
+          endToken.charOffset - beginToken.charOffset);
       push(const InvalidType());
       return;
     }
@@ -2520,7 +2522,9 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
           token.charOffset,
           optional("const", token) || optional("@", token),
           prefixName: prefixName);
-      push(prefix != null ? wrapInDeferredCheck(expression, prefix) : expression);
+      push(prefix != null
+          ? wrapInDeferredCheck(expression, prefix)
+          : expression);
     } else if (type is UnresolvedAccessor) {
       push(type.buildError(arguments));
     } else {
