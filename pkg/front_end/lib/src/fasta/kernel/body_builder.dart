@@ -1852,6 +1852,7 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
         return;
       }
     }
+    //name = name is DeferredAccessor ? name.accessor : name;
     if (name is TypeDeclarationAccessor) {
       push(name.buildTypeWithBuiltArguments(arguments));
     } else if (name is FastaAccessor) {
@@ -2485,6 +2486,13 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
 
     String prefixName;
     var type = pop();
+    var prefix;
+    if (type is DeferredAccessor) {
+      DeferredAccessor accessor = type;
+      type = accessor.accessor;
+      prefix = accessor.builder;
+    }
+
     if (type is TypeDeclarationAccessor) {
       TypeDeclarationAccessor accessor = type;
       if (accessor.prefix != null) {
@@ -2496,7 +2504,7 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
 
     bool savedConstantExpressionRequired = pop();
     if (type is TypeDeclarationBuilder) {
-      push(buildConstructorInvocation(
+      Expression expression = buildConstructorInvocation(
           type,
           nameToken,
           arguments,
@@ -2504,7 +2512,8 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
           typeArguments,
           token.charOffset,
           optional("const", token) || optional("@", token),
-          prefixName: prefixName));
+          prefixName: prefixName);
+      push(prefix != null ? wrapInDeferredCheck(expression, prefix) : expression);
     } else if (type is UnresolvedAccessor) {
       push(type.buildError(arguments));
     } else {
