@@ -900,6 +900,33 @@ Message _withArgumentsDeferredPrefixDuplicatedCause(String name) {
 
 // DO NOT EDIT. THIS FILE IS GENERATED. SEE TOP OF FILE.
 const Template<
+    Message Function(
+        String
+            name)> templateDeferredTypeAnnotation = const Template<
+        Message Function(String name)>(
+    messageTemplate:
+        r"""The type '#name' is deferred. Deferred types are not valid as type annotations.""",
+    tipTemplate:
+        r"""Try using a non-deferred abstract class as an interface.""",
+    withArguments: _withArgumentsDeferredTypeAnnotation);
+
+// DO NOT EDIT. THIS FILE IS GENERATED. SEE TOP OF FILE.
+const Code<Message Function(String name)> codeDeferredTypeAnnotation =
+    const Code<Message Function(String name)>(
+        "DeferredTypeAnnotation", templateDeferredTypeAnnotation,
+        analyzerCode: "TYPE_ANNOTATION_DEFERRED_CLASS", dart2jsCode: "*fatal*");
+
+// DO NOT EDIT. THIS FILE IS GENERATED. SEE TOP OF FILE.
+Message _withArgumentsDeferredTypeAnnotation(String name) {
+  return new Message(codeDeferredTypeAnnotation,
+      message:
+          """The type '$name' is deferred. Deferred types are not valid as type annotations.""",
+      tip: """Try using a non-deferred abstract class as an interface.""",
+      arguments: {'name': name});
+}
+
+// DO NOT EDIT. THIS FILE IS GENERATED. SEE TOP OF FILE.
+const Template<
         Message Function(int count, int count2, String string, String string2,
             String string3)> templateDillOutlineSummary =
     const Template<

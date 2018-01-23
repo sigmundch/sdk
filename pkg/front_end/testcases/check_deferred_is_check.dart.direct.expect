@@ -1,0 +1,9 @@
+library;
+import self as self;
+import "dart:core" as core;
+
+static const field dynamic #errors = const <dynamic>["pkg/front_end/testcases/check_deferred_is_check.dart:9:14: Error: The type 'lib.C' is deferred. Deferred types are not valid as type annotations.\nTry using a non-deferred abstract class as an interface.\n  print(x is lib.C);\n             ^"]/* from null */;
+static method main() → dynamic {}
+static method test(dynamic x) → dynamic {
+  core::print(x is invalid-type);
+}

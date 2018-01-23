@@ -1852,7 +1852,14 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
         return;
       }
     }
-    //name = name is DeferredAccessor ? name.accessor : name;
+    if (name is DeferredAccessor) {
+      String displayName = debugName(name.builder.name,
+          getNodeName(name.accessor));
+      addCompileTimeError(fasta.templateDeferredTypeAnnotation.withArguments(displayName),
+          beginToken.charOffset, endToken.charOffset - beginToken.charOffset);
+      push(const InvalidType());
+      return;
+    }
     if (name is TypeDeclarationAccessor) {
       push(name.buildTypeWithBuiltArguments(arguments));
     } else if (name is FastaAccessor) {
