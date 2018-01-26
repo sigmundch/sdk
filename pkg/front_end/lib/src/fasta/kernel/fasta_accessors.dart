@@ -849,6 +849,18 @@ class DeferredAccessor extends kernel.DeferredAccessor with FastaAccessor {
 
   FastaAccessor get accessor => super.accessor;
 
+  buildPropertyAccess(
+      IncompleteSend send, int operatorOffset, bool isNullAware) {
+    var propertyAccess =
+        accessor.buildPropertyAccess(send, operatorOffset, isNullAware);
+    if (propertyAccess is FastaAccessor) {
+      return new DeferredAccessor(helper, token, builder, propertyAccess);
+    } else {
+      Expression expression = propertyAccess;
+      return helper.wrapInDeferredCheck(expression, builder);
+    }
+  }
+
   Expression doInvocation(int offset, Arguments arguments) {
     return helper.wrapInDeferredCheck(
         accessor.doInvocation(offset, arguments), builder);

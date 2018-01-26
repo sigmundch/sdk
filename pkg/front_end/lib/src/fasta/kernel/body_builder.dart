@@ -1242,7 +1242,7 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
         deprecated_addCompileTimeError(
             charOffset, "Not a constant expression.");
       }
-      FastaAccessor accessor = new TypeDeclarationAccessor(
+      TypeDeclarationAccessor accessor = new TypeDeclarationAccessor(
           this, prefix, charOffset, builder, name, token);
       return (prefix?.deferred == true)
           ? new DeferredAccessor(this, token, prefix, accessor)
