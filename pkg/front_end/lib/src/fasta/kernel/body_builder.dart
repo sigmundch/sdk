@@ -2495,7 +2495,7 @@ class BodyBuilder extends ScopeListener<JumpTarget> implements BuilderHelper {
 
     String prefixName;
     var type = pop();
-    var prefix;
+    PrefixBuilder prefix;
     if (type is DeferredAccessor) {
       DeferredAccessor accessor = type;
       type = accessor.accessor;
