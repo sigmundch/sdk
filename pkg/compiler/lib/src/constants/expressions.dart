@@ -696,8 +696,17 @@ class ConcatenateConstantExpression extends ConstantExpression {
         continue;
       }
       if (value.isPrimitive) {
-        PrimitiveConstantValue primitive = value;
-        sb.write(primitive.primitiveValue);
+        if (value is StringConstantValue) {
+          sb.write(value.primitiveValue);
+        } else if (value is IntConstantValue) {
+          sb.write(value.primitiveValue);
+        } else if (value is DoubleConstantValue) {
+          sb.write(value.primitiveValue);
+        } else if (value is BoolConstantValue) {
+          sb.write(value.primitiveValue);
+        } else if (value is NullConstantValue) {
+          sb.write(value.primitiveValue);
+        }
       } else {
         environment.reportError(
             expression, MessageKind.INVALID_CONSTANT_INTERPOLATION_TYPE, {
@@ -1972,7 +1981,7 @@ class AssertConstantExpression extends ConstantExpression {
     if (!validAssert) {
       if (message != null) {
         ConstantValue value = message.evaluate(environment, constantSystem);
-        if (value is PrimitiveConstantValue) {
+        if (value is StringConstantValue) {
           String text = '${value.primitiveValue}';
           environment.reportError(this,
               MessageKind.INVALID_ASSERT_VALUE_MESSAGE, {'message': text});

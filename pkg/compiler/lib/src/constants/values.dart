@@ -153,26 +153,19 @@ class FunctionConstantValue extends ConstantValue {
 }
 
 abstract class PrimitiveConstantValue extends ConstantValue {
-  get primitiveValue;
-
   const PrimitiveConstantValue();
 
   bool get isPrimitive => true;
 
   bool operator ==(var other) {
-    if (other is! PrimitiveConstantValue) return false;
-    PrimitiveConstantValue otherPrimitive = other;
-    // We use == instead of 'identical' so that DartStrings compare correctly.
-    return primitiveValue == otherPrimitive.primitiveValue;
+    // Making this method abstract does not give us an error.
+    throw new UnsupportedError('PrimitiveConstant.==');
   }
 
   int get hashCode => throw new UnsupportedError('PrimitiveConstant.hashCode');
 
   // Primitive constants don't have dependencies.
   List<ConstantValue> getDependencies() => const <ConstantValue>[];
-
-  /// This value in Dart syntax.
-  String toDartText() => primitiveValue.toString();
 }
 
 class NullConstantValue extends PrimitiveConstantValue {
@@ -189,6 +182,8 @@ class NullConstantValue extends PrimitiveConstantValue {
 
   DartType getType(CommonElements types) => types.nullType;
 
+  bool operator ==(other) => identical(this, other);
+
   // The magic constant has no meaning. It is just a random value.
   int get hashCode => 785965825;
 
@@ -197,18 +192,22 @@ class NullConstantValue extends PrimitiveConstantValue {
   ConstantValueKind get kind => ConstantValueKind.NULL;
 
   String toStructuredText() => 'NullConstant';
+
+  String toDartText() => primitiveValue.toString();
 }
 
 abstract class NumConstantValue extends PrimitiveConstantValue {
-  const NumConstantValue();
-
-  num get primitiveValue;
+  double get doubleValue;
 
   bool get isNum => true;
+
+  const NumConstantValue();
 }
 
 class IntConstantValue extends NumConstantValue {
   final int primitiveValue;
+
+  double get doubleValue => primitiveValue.toDouble();
 
   factory IntConstantValue(int value) {
     switch (value) {
@@ -259,11 +258,8 @@ class IntConstantValue extends NumConstantValue {
 
   DartType getType(CommonElements types) => types.intType;
 
-  // We have to override the equality operator so that ints and doubles are
-  // treated as separate constants.
-  // The is [:!IntConstant:] check at the beginning of the function makes sure
-  // that we compare only equal to integer constants.
   bool operator ==(var other) {
+    // Ints and doubles are treated as separate constants.
     if (other is! IntConstantValue) return false;
     IntConstantValue otherInt = other;
     return primitiveValue == otherInt.primitiveValue;
@@ -276,10 +272,14 @@ class IntConstantValue extends NumConstantValue {
   ConstantValueKind get kind => ConstantValueKind.INT;
 
   String toStructuredText() => 'IntConstant(${toDartText()})';
+
+  String toDartText() => primitiveValue.toString();
 }
 
 class DoubleConstantValue extends NumConstantValue {
   final double primitiveValue;
+
+  double get doubleValue => primitiveValue;
 
   factory DoubleConstantValue(double value) {
     if (value.isNaN) {
@@ -336,6 +336,8 @@ class DoubleConstantValue extends NumConstantValue {
   ConstantValueKind get kind => ConstantValueKind.DOUBLE;
 
   String toStructuredText() => 'DoubleConstant(${toDartText()})';
+
+  String toDartText() => primitiveValue.toString();
 }
 
 abstract class BoolConstantValue extends PrimitiveConstantValue {
@@ -346,6 +348,8 @@ abstract class BoolConstantValue extends PrimitiveConstantValue {
   const BoolConstantValue._internal();
 
   bool get isBool => true;
+
+  bool get primitiveValue;
 
   DartType getType(CommonElements types) => types.boolType;
 
@@ -374,6 +378,8 @@ class TrueConstantValue extends BoolConstantValue {
   // The magic constant is just a random value. It does not have any
   // significance.
   int get hashCode => 499;
+
+  String toDartText() => primitiveValue.toString();
 }
 
 class FalseConstantValue extends BoolConstantValue {
@@ -392,6 +398,8 @@ class FalseConstantValue extends BoolConstantValue {
   // The magic constant is just a random value. It does not have any
   // significance.
   int get hashCode => 536555975;
+
+  String toDartText() => primitiveValue.toString();
 }
 
 class StringConstantValue extends PrimitiveConstantValue {
