@@ -178,8 +178,6 @@ class NullConstantValue extends PrimitiveConstantValue {
 
   bool get isNull => true;
 
-  get primitiveValue => null;
-
   DartType getType(CommonElements types) => types.nullType;
 
   bool operator ==(other) => identical(this, other);
@@ -193,7 +191,7 @@ class NullConstantValue extends PrimitiveConstantValue {
 
   String toStructuredText() => 'NullConstant';
 
-  String toDartText() => primitiveValue.toString();
+  String toDartText() => 'null';
 }
 
 abstract class NumConstantValue extends PrimitiveConstantValue {
@@ -205,9 +203,8 @@ abstract class NumConstantValue extends PrimitiveConstantValue {
 }
 
 class IntConstantValue extends NumConstantValue {
-  final int primitiveValue;
-
-  double get doubleValue => primitiveValue.toDouble();
+  final int intValue;
+  double get doubleValue => intValue.toDouble();
 
   factory IntConstantValue(int value) {
     switch (value) {
@@ -242,19 +239,19 @@ class IntConstantValue extends NumConstantValue {
     }
   }
 
-  const IntConstantValue._internal(this.primitiveValue);
+  const IntConstantValue._internal(this.intValue);
 
   bool get isInt => true;
 
-  bool isUInt31() => primitiveValue >= 0 && primitiveValue < (1 << 31);
+  bool isUInt31() => intValue >= 0 && intValue < (1 << 31);
 
-  bool isUInt32() => primitiveValue >= 0 && primitiveValue < (1 << 32);
+  bool isUInt32() => intValue >= 0 && intValue < (1 << 32);
 
-  bool isPositive() => primitiveValue >= 0;
+  bool isPositive() => intValue >= 0;
 
-  bool get isZero => primitiveValue == 0;
+  bool get isZero => intValue == 0;
 
-  bool get isOne => primitiveValue == 1;
+  bool get isOne => intValue == 1;
 
   DartType getType(CommonElements types) => types.intType;
 
@@ -262,10 +259,10 @@ class IntConstantValue extends NumConstantValue {
     // Ints and doubles are treated as separate constants.
     if (other is! IntConstantValue) return false;
     IntConstantValue otherInt = other;
-    return primitiveValue == otherInt.primitiveValue;
+    return intValue == otherInt.intValue;
   }
 
-  int get hashCode => primitiveValue & Hashing.SMI_MASK;
+  int get hashCode => intValue & Hashing.SMI_MASK;
 
   accept(ConstantValueVisitor visitor, arg) => visitor.visitInt(this, arg);
 
@@ -273,13 +270,11 @@ class IntConstantValue extends NumConstantValue {
 
   String toStructuredText() => 'IntConstant(${toDartText()})';
 
-  String toDartText() => primitiveValue.toString();
+  String toDartText() => intValue.toString();
 }
 
 class DoubleConstantValue extends NumConstantValue {
-  final double primitiveValue;
-
-  double get doubleValue => primitiveValue;
+  final double doubleValue;
 
   factory DoubleConstantValue(double value) {
     if (value.isNaN) {
@@ -297,39 +292,39 @@ class DoubleConstantValue extends NumConstantValue {
     }
   }
 
-  const DoubleConstantValue._internal(this.primitiveValue);
+  const DoubleConstantValue._internal(this.doubleValue);
 
   bool get isDouble => true;
 
-  bool get isNaN => primitiveValue.isNaN;
+  bool get isNaN => doubleValue.isNaN;
 
   // We need to check for the negative sign since -0.0 == 0.0.
-  bool get isMinusZero => primitiveValue == 0.0 && primitiveValue.isNegative;
+  bool get isMinusZero => doubleValue == 0.0 && doubleValue.isNegative;
 
-  bool get isZero => primitiveValue == 0.0;
+  bool get isZero => doubleValue == 0.0;
 
-  bool get isOne => primitiveValue == 1.0;
+  bool get isOne => doubleValue == 1.0;
 
-  bool get isPositiveInfinity => primitiveValue == double.INFINITY;
+  bool get isPositiveInfinity => doubleValue == double.INFINITY;
 
-  bool get isNegativeInfinity => primitiveValue == -double.INFINITY;
+  bool get isNegativeInfinity => doubleValue == -double.INFINITY;
 
   DartType getType(CommonElements types) => types.doubleType;
 
   bool operator ==(var other) {
     if (other is! DoubleConstantValue) return false;
     DoubleConstantValue otherDouble = other;
-    double otherValue = otherDouble.primitiveValue;
-    if (primitiveValue == 0.0 && otherValue == 0.0) {
-      return primitiveValue.isNegative == otherValue.isNegative;
-    } else if (primitiveValue.isNaN) {
+    double otherValue = otherDouble.doubleValue;
+    if (doubleValue == 0.0 && otherValue == 0.0) {
+      return doubleValue.isNegative == otherValue.isNegative;
+    } else if (doubleValue.isNaN) {
       return otherValue.isNaN;
     } else {
-      return primitiveValue == otherValue;
+      return doubleValue == otherValue;
     }
   }
 
-  int get hashCode => primitiveValue.hashCode;
+  int get hashCode => doubleValue.hashCode;
 
   accept(ConstantValueVisitor visitor, arg) => visitor.visitDouble(this, arg);
 
@@ -337,7 +332,7 @@ class DoubleConstantValue extends NumConstantValue {
 
   String toStructuredText() => 'DoubleConstant(${toDartText()})';
 
-  String toDartText() => primitiveValue.toString();
+  String toDartText() => doubleValue.toString();
 }
 
 abstract class BoolConstantValue extends PrimitiveConstantValue {
@@ -349,7 +344,7 @@ abstract class BoolConstantValue extends PrimitiveConstantValue {
 
   bool get isBool => true;
 
-  bool get primitiveValue;
+  bool get boolValue;
 
   DartType getType(CommonElements types) => types.boolType;
 
@@ -369,7 +364,7 @@ class TrueConstantValue extends BoolConstantValue {
 
   bool get isTrue => true;
 
-  bool get primitiveValue => true;
+  bool get boolValue => true;
 
   FalseConstantValue negate() => new FalseConstantValue();
 
@@ -379,7 +374,7 @@ class TrueConstantValue extends BoolConstantValue {
   // significance.
   int get hashCode => 499;
 
-  String toDartText() => primitiveValue.toString();
+  String toDartText() => boolValue.toString();
 }
 
 class FalseConstantValue extends BoolConstantValue {
@@ -389,7 +384,7 @@ class FalseConstantValue extends BoolConstantValue {
 
   bool get isFalse => true;
 
-  bool get primitiveValue => false;
+  bool get boolValue => false;
 
   TrueConstantValue negate() => new TrueConstantValue();
 
@@ -399,17 +394,17 @@ class FalseConstantValue extends BoolConstantValue {
   // significance.
   int get hashCode => 536555975;
 
-  String toDartText() => primitiveValue.toString();
+  String toDartText() => boolValue.toString();
 }
 
 class StringConstantValue extends PrimitiveConstantValue {
-  final String primitiveValue;
+  final String stringValue;
 
   final int hashCode;
 
   // TODO(floitsch): cache StringConstants.
   StringConstantValue(String value)
-      : this.primitiveValue = value,
+      : this.stringValue = value,
         this.hashCode = value.hashCode;
 
   bool get isString => true;
@@ -421,19 +416,19 @@ class StringConstantValue extends PrimitiveConstantValue {
     if (other is! StringConstantValue) return false;
     StringConstantValue otherString = other;
     return hashCode == otherString.hashCode &&
-        primitiveValue == otherString.primitiveValue;
+        stringValue == otherString.stringValue;
   }
 
-  String toDartString() => primitiveValue;
+  String toDartString() => stringValue;
 
-  int get length => primitiveValue.length;
+  int get length => stringValue.length;
 
   accept(ConstantValueVisitor visitor, arg) => visitor.visitString(this, arg);
 
   ConstantValueKind get kind => ConstantValueKind.STRING;
 
   // TODO(johnniwinther): Ensure correct escaping.
-  String toDartText() => '"${primitiveValue}"';
+  String toDartText() => '"${stringValue}"';
 
   String toStructuredText() => 'StringConstant(${toDartText()})';
 }

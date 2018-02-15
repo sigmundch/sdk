@@ -43,7 +43,7 @@ void checkAnnotation(String name, String declaration,
     ConstantValue value =
         compiler.constants.getConstantValue(annotation.constant);
     Expect.isTrue(value is StringConstantValue);
-    Expect.stringEquals('xyz', (value as StringConstantValue).primitiveValue);
+    Expect.stringEquals('xyz', (value as StringConstantValue).stringValue);
 
     checkPosition(
         annotation, annotation.cachedNode, source1, compiler.reporter);
@@ -73,8 +73,8 @@ void checkAnnotation(String name, String declaration,
     Expect.identical(value1, value2, 'expected same compile-time constant');
     Expect.isTrue(value1 is StringConstantValue);
     Expect.isTrue(value2 is StringConstantValue);
-    Expect.stringEquals('xyz', (value1 as StringConstantValue).primitiveValue);
-    Expect.stringEquals('xyz', (value2 as StringConstantValue).primitiveValue);
+    Expect.stringEquals('xyz', (value1 as StringConstantValue).stringValue);
+    Expect.stringEquals('xyz', (value2 as StringConstantValue).stringValue);
 
     checkPosition(
         annotation1, annotation1.cachedNode, source2, compiler.reporter);
@@ -105,7 +105,7 @@ void checkAnnotation(String name, String declaration,
     ConstantValue value =
         compiler.constants.getConstantValue(annotation.constant);
     Expect.isTrue(value is StringConstantValue);
-    Expect.stringEquals('xyz', (value as StringConstantValue).primitiveValue);
+    Expect.stringEquals('xyz', (value as StringConstantValue).stringValue);
 
     checkPosition(
         annotation, annotation.cachedNode, source3, compiler.reporter);
@@ -141,8 +141,8 @@ void checkAnnotation(String name, String declaration,
     Expect.identical(value1, value2, 'expected same compile-time constant');
     Expect.isTrue(value1 is StringConstantValue);
     Expect.isTrue(value2 is StringConstantValue);
-    Expect.stringEquals('xyz', (value1 as StringConstantValue).primitiveValue);
-    Expect.stringEquals('xyz', (value2 as StringConstantValue).primitiveValue);
+    Expect.stringEquals('xyz', (value1 as StringConstantValue).stringValue);
+    Expect.stringEquals('xyz', (value2 as StringConstantValue).stringValue);
 
     checkPosition(
         annotation1, annotation1.cachedNode, source4, compiler.reporter);
@@ -193,7 +193,7 @@ void testLibraryTags() {
               compiler.constants.getConstantValue(annotation.constant);
           Expect.isTrue(value is StringConstantValue);
           Expect.stringEquals(
-              'xyz', (value as StringConstantValue).primitiveValue);
+              'xyz', (value as StringConstantValue).stringValue);
 
           checkPosition(
               annotation, annotation.cachedNode, source, compiler.reporter);
