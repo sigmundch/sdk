@@ -162,6 +162,11 @@ class JavaScriptIdentityOperation implements BinaryOperation {
     if (result == null || result.boolValue) return result;
     // In JavaScript -0.0 === 0 and all doubles are equal to their integer
     // values. Furthermore NaN !== NaN.
+    if (left.isInt && right.isInt) {
+      IntConstantValue leftInt = left;
+      IntConstantValue rightInt = right;
+      return new BoolConstantValue(leftInt.intValue == rightInt.intValue);
+    }
     if (left.isNum && right.isNum) {
       NumConstantValue leftNum = left;
       NumConstantValue rightNum = right;

@@ -152,8 +152,9 @@ abstract class ArithmeticNumOperation implements BinaryOperation {
       NumConstantValue rightNum = right;
       num foldedValue;
       if (left.isInt && right.isInt) {
-        foldedValue = foldInts((leftNum as IntConstantValue).intValue,
-            (rightNum as IntConstantValue).intValue);
+        IntConstantValue leftInt = leftNum;
+        IntConstantValue rightInt = rightNum;
+        foldedValue = foldInts(leftInt.intValue, rightInt.intValue);
       } else {
         foldedValue = foldNums(leftNum.doubleValue, rightNum.doubleValue);
       }
@@ -266,9 +267,16 @@ abstract class RelationalNumOperation implements BinaryOperation {
   const RelationalNumOperation();
   ConstantValue fold(ConstantValue left, ConstantValue right) {
     if (!left.isNum || !right.isNum) return null;
-    NumConstantValue leftNum = left;
-    NumConstantValue rightNum = right;
-    bool foldedValue = foldNums(leftNum.doubleValue, rightNum.doubleValue);
+    bool foldedValue;
+    if (left.isInt && right.isInt) {
+      IntConstantValue leftInt = left;
+      IntConstantValue rightInt = right;
+      foldedValue = foldInts(leftInt.intValue, rightInt.intValue);
+    } else {
+      NumConstantValue leftNum = left;
+      NumConstantValue rightNum = right;
+      foldedValue = foldNums(leftNum.doubleValue, rightNum.doubleValue);
+    }
     assert(foldedValue != null);
     return DART_CONSTANT_SYSTEM.createBool(foldedValue);
   }
@@ -308,14 +316,22 @@ class EqualsOperation implements BinaryOperation {
   final String name = '==';
   const EqualsOperation();
   ConstantValue fold(ConstantValue left, ConstantValue right) {
+    // Numbers need to be treated specially because: NaN != NaN, -0.0 == 0.0,
+    // and 1 == 1.0.
+    if (left.isInt && right.isInt) {
+      IntConstantValue leftInt = left;
+      IntConstantValue rightInt = right;
+      bool result = leftInt.intValue == rightInt.intValue;
+      return DART_CONSTANT_SYSTEM.createBool(result);
+    }
+
     if (left.isNum && right.isNum) {
-      // Numbers need to be treated specially because: NaN != NaN, -0.0 == 0.0,
-      // and 1 == 1.0.
       NumConstantValue leftNum = left;
       NumConstantValue rightNum = right;
       bool result = leftNum.doubleValue == rightNum.doubleValue;
       return DART_CONSTANT_SYSTEM.createBool(result);
     }
+
     if (left.isConstructedObject) {
       // Unless we know that the user-defined object does not implement the
       // equality operator we cannot fold here.
