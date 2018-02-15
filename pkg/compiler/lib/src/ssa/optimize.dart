@@ -1256,22 +1256,33 @@ class SsaInstructionSimplifier extends HBaseVisitor
     HInstruction input = node.inputs[0];
     if (input.isString(_closedWorld)) return input;
 
+    HInstruction asString(String string) =>
+        _graph.addConstant(constantSystem.createString(string), _closedWorld);
+
     HInstruction tryConstant() {
       if (!input.isConstant()) return null;
       HConstant constant = input;
       if (!constant.constant.isPrimitive) return null;
-      if (constant.constant.isInt) {
+      PrimitiveConstantValue value = constant.constant;
+      if (value is IntConstantValue) {
         // Only constant-fold int.toString() when Dart and JS results the same.
         // TODO(18103): We should be able to remove this work-around when issue
         // 18103 is resolved by providing the correct string.
-        IntConstantValue intConstant = constant.constant;
-        // Very conservative range.
-        if (!intConstant.isUInt32()) return null;
+        if (!value.isUInt32()) return null;
+        return asString('${value.primitiveValue}');
       }
-      PrimitiveConstantValue primitive = constant.constant;
-      return _graph.addConstant(
-          constantSystem.createString('${primitive.primitiveValue}'),
-          _closedWorld);
+      if (value is BoolConstantValue) {
+        return asString(value.primitiveValue ? 'true' : 'false');
+      }
+      if (value is NullConstantValue) {
+        return asString('null');
+      }
+      if (value is DoubleConstantValue) {
+        // TODO(sra): It seems unlikely that all dart2js host implementations
+        // produce exactly the same characters as all JavaScript targets.
+        return asString('${value.primitiveValue}');
+      }
+      return null;
     }
 
     HInstruction tryToString() {

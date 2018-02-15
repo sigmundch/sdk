@@ -560,8 +560,17 @@ class CompileTimeConstantEvaluator extends Visitor<AstConstant> {
       subexpressions.add(subexpression.expression);
       ConstantValue expression = subexpression.value;
       if (expression.isPrimitive) {
-        PrimitiveConstantValue primitive = expression;
-        sb.write(primitive.primitiveValue);
+        if (expression is IntConstantValue) {
+          sb.write(expression.primitiveValue);
+        } else if (expression is DoubleConstantValue) {
+          sb.write(expression.primitiveValue);
+        } else if (expression is StringConstantValue) {
+          sb.write(expression.primitiveValue);
+        } else if (expression is BoolConstantValue) {
+          sb.write(expression.primitiveValue);
+        } else if (expression is NullConstantValue) {
+          sb.write(expression.primitiveValue);
+        }
       } else {
         // TODO(johnniwinther): Specialize message to indicated that the problem
         // is not constness but the types of the const expressions.

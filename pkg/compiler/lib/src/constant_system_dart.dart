@@ -154,9 +154,11 @@ abstract class ArithmeticNumOperation implements BinaryOperation {
       NumConstantValue rightNum = right;
       num foldedValue;
       if (left.isInt && right.isInt) {
-        foldedValue = foldInts(leftNum.primitiveValue, rightNum.primitiveValue);
+        foldedValue = foldInts(
+            (leftNum as IntConstantValue).primitiveValue,
+            (rightNum as IntConstantValue).primitiveValue);
       } else {
-        foldedValue = foldNums(leftNum.primitiveValue, rightNum.primitiveValue);
+        foldedValue = foldNums(leftNum.doubleValue, rightNum.doubleValue);
       }
       // A division by 0 means that we might not have a folded value.
       if (foldedValue == null) return null;
@@ -248,7 +250,7 @@ class AddOperation implements BinaryOperation {
     } else if (left.isNum && right.isNum) {
       NumConstantValue leftNum = left;
       NumConstantValue rightNum = right;
-      double result = leftNum.primitiveValue + rightNum.primitiveValue;
+      double result = leftNum.doubleValue + rightNum.doubleValue;
       return DART_CONSTANT_SYSTEM.createDouble(result);
     } else if (left.isString && right.isString) {
       StringConstantValue leftString = left;
@@ -270,7 +272,7 @@ abstract class RelationalNumOperation implements BinaryOperation {
     NumConstantValue leftNum = left;
     NumConstantValue rightNum = right;
     bool foldedValue =
-        foldNums(leftNum.primitiveValue, rightNum.primitiveValue);
+        foldNums(leftNum.doubleValue, rightNum.doubleValue);
     assert(foldedValue != null);
     return DART_CONSTANT_SYSTEM.createBool(foldedValue);
   }
@@ -315,7 +317,7 @@ class EqualsOperation implements BinaryOperation {
       // and 1 == 1.0.
       NumConstantValue leftNum = left;
       NumConstantValue rightNum = right;
-      bool result = leftNum.primitiveValue == rightNum.primitiveValue;
+      bool result = leftNum.doubleValue == rightNum.doubleValue;
       return DART_CONSTANT_SYSTEM.createBool(result);
     }
     if (left.isConstructedObject) {

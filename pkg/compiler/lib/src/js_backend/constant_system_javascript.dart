@@ -166,8 +166,8 @@ class JavaScriptIdentityOperation implements BinaryOperation {
     if (left.isNum && right.isNum) {
       NumConstantValue leftNum = left;
       NumConstantValue rightNum = right;
-      double leftDouble = leftNum.primitiveValue.toDouble();
-      double rightDouble = rightNum.primitiveValue.toDouble();
+      double leftDouble = leftNum.doubleValue;
+      double rightDouble = rightNum.doubleValue;
       return new BoolConstantValue(leftDouble == rightDouble);
     }
     return result;
