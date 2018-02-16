@@ -281,12 +281,14 @@ abstract class RelationalNumOperation implements BinaryOperation {
     return DART_CONSTANT_SYSTEM.createBool(foldedValue);
   }
 
+  bool foldInts(int left, int right);
   bool foldNums(num left, num right);
 }
 
 class LessOperation extends RelationalNumOperation {
   final String name = '<';
   const LessOperation();
+  bool foldInts(int left, int right) => left < right;
   bool foldNums(num left, num right) => left < right;
   apply(left, right) => left < right;
 }
@@ -294,6 +296,7 @@ class LessOperation extends RelationalNumOperation {
 class LessEqualOperation extends RelationalNumOperation {
   final String name = '<=';
   const LessEqualOperation();
+  bool foldInts(int left, int right) => left <= right;
   bool foldNums(num left, num right) => left <= right;
   apply(left, right) => left <= right;
 }
@@ -301,6 +304,7 @@ class LessEqualOperation extends RelationalNumOperation {
 class GreaterOperation extends RelationalNumOperation {
   final String name = '>';
   const GreaterOperation();
+  bool foldInts(int left, int right) => left > right;
   bool foldNums(num left, num right) => left > right;
   apply(left, right) => left > right;
 }
@@ -308,6 +312,7 @@ class GreaterOperation extends RelationalNumOperation {
 class GreaterEqualOperation extends RelationalNumOperation {
   final String name = '>=';
   const GreaterEqualOperation();
+  bool foldInts(int left, int right) => left >= right;
   bool foldNums(num left, num right) => left >= right;
   apply(left, right) => left >= right;
 }
