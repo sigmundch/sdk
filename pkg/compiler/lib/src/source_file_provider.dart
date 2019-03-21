@@ -123,6 +123,7 @@ abstract class SourceFileProvider implements CompilerInput {
         result.setRange(offset, offset + contentPart.length, contentPart);
         offset += contentPart.length;
       }
+
       dartCharactersRead += totalLength;
       api.Input<List<int>> input;
       switch (inputKind) {

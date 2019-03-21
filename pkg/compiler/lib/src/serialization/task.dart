@@ -13,6 +13,7 @@ import '../diagnostics/diagnostic_listener.dart';
 import '../environment.dart';
 import '../inferrer/abstract_value_domain.dart';
 import '../inferrer/types.dart';
+import '../ir/modular.dart';
 import '../js_backend/inferred_data.dart';
 import '../js_model/js_world.dart';
 import '../options.dart';
@@ -74,6 +75,17 @@ class SerializationTask extends CompilerTask {
           .createBinarySink(compiler.options.writeDataUri);
       DataSink sink = new BinarySink(new BinaryOutputSinkAdapter(dataOutput));
       serializeGlobalTypeInferenceResults(results, sink);
+    });
+  }
+
+  void serializeModule(ModuleData data) {
+    measureSubtask('serialize module data', () {
+      compiler.reporter.log('Writing data to ${compiler.options.outputUri}');
+      api.BinaryOutputSink dataOutput =
+          compiler.outputProvider.createBinarySink(compiler.options.outputUri);
+      DataSink sink = new BinarySink(new BinaryOutputSinkAdapter(dataOutput));
+      data.toDataSink(sink);
+      sink.close();
     });
   }
 

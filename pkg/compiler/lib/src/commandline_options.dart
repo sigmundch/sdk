@@ -81,6 +81,7 @@ class Flags {
   static const String progress = '--show-internal-progress';
   static const String version = '--version';
 
+  static const String modularAnalysis = '--modular-analysis';
   static const String dillDependencies = '--dill-dependencies';
   static const String readData = '--read-data';
   static const String writeData = '--write-data';

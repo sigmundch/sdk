@@ -245,6 +245,15 @@ Future<api.CompilationResult> compile(List<String> argv,
         currentDirectory.resolve(extractPath(argument, isDirectory: true));
   }
 
+  void setModularAnalysis(String argument) {
+    options.add(argument);
+    if (compilationStrategy != CompilationStrategy.direct) {
+      fail(
+          "$argument cannot be used together with other compilation strategies.");
+    }
+    compilationStrategy = CompilationStrategy.modularData;
+  }
+
   void setReadData(String argument) {
     if (compilationStrategy == CompilationStrategy.toData) {
       fail("Cannot read and write serialized simultaneously.");
@@ -346,6 +355,7 @@ Future<api.CompilationResult> compile(List<String> argv,
     new OptionHandler(Flags.version, (_) => wantVersion = true),
     new OptionHandler('--library-root=.+', ignoreOption),
     new OptionHandler('--libraries-spec=.+', setLibrarySpecificationUri),
+    new OptionHandler(Flags.modularAnalysis, setModularAnalysis),
     new OptionHandler('${Flags.dillDependencies}=.+', setDillDependencies),
     new OptionHandler('${Flags.readData}|${Flags.readData}=.+', setReadData),
     new OptionHandler('${Flags.writeData}|${Flags.writeData}=.+', setWriteData),
@@ -529,6 +539,9 @@ Future<api.CompilationResult> compile(List<String> argv,
       readDataUri ??= currentDirectory.resolve('$scriptName.data');
       options.add('${Flags.readData}=${readDataUri}');
       break;
+    case CompilationStrategy.modularData:
+      out ??= currentDirectory.resolve('out.data');
+      break;
   }
   options.add('--out=$out');
   sourceMapOut = Uri.parse('$out.map');
@@ -623,6 +636,19 @@ Future<api.CompilationResult> compile(List<String> argv,
             print('Emitted file $jsCount JavaScript files.');
           }
         }
+        break;
+      case CompilationStrategy.modularData:
+        int dartCharactersRead = inputProvider.dartCharactersRead;
+        int dataBytesWritten = outputProvider.totalDataWritten;
+        print('Serialized '
+            '${_formatCharacterCount(dartCharactersRead)} kernel bytes to '
+            '${_formatCharacterCount(dataBytesWritten)} bytes data in '
+            '${_formatDurationAsSeconds(wallclock.elapsed)} seconds');
+        String input = uriPathToNative(scriptName);
+        String dataOutput =
+            relativize(currentDirectory, out, Platform.isWindows);
+        print(
+            'Kernel file ($input) analysis data serialized to ${dataOutput}.');
         break;
     }
 
@@ -1043,4 +1069,4 @@ void batchMain(List<String> batchArguments) {
   });
 }
 
-enum CompilationStrategy { direct, toKernel, toData, fromData }
+enum CompilationStrategy { direct, toKernel, toData, fromData, modularData }

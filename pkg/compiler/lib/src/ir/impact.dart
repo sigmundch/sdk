@@ -9,6 +9,7 @@ import 'package:kernel/ast.dart' as ir;
 import 'package:kernel/class_hierarchy.dart' as ir;
 import 'package:kernel/type_environment.dart' as ir;
 
+import '../serialization/serialization.dart';
 import '../common.dart';
 import 'constants.dart';
 import 'impact_data.dart';
@@ -686,12 +687,30 @@ List<String> _getNamedArguments(ir.Arguments arguments) =>
     arguments.named.map((n) => n.name).toList();
 
 class ImpactBuilderData {
+  static const String tag = 'ImpactBuilderData';
+
   final ImpactData impactData;
   final Map<ir.Expression, TypeMap> typeMapsForTesting;
   final StaticTypeCache cachedStaticTypes;
 
   ImpactBuilderData(
       this.impactData, this.typeMapsForTesting, this.cachedStaticTypes);
+
+  factory ImpactBuilderData.fromDataSource(DataSource source) {
+    source.begin(tag);
+    var data = ImpactData.fromDataSource(source);
+    Map<ir.Expression, ir.DartType> cache =
+        source.readTreeNodeMap(() => source.readDartTypeNode());
+    source.end(tag);
+    return new ImpactBuilderData(data, const {}, cache);
+  }
+
+  void toDataSink(DataSink sink) {
+    sink.begin(tag);
+    impactData.toDataSink(sink);
+    sink.writeTreeNodeMap(cachedStaticTypes, sink.writeDartTypeNode);
+    sink.end(tag);
+  }
 }
 
 class ConstantImpactVisitor implements ir.ConstantVisitor<void> {

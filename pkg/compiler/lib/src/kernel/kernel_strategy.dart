@@ -281,7 +281,7 @@ class KernelWorkItem implements WorkItem {
       EnumSet<PragmaAnnotation> annotations = processMemberAnnotations(
           _elementMap.options,
           _elementMap.reporter,
-          _elementMap.getMemberNode(element),
+          node,
           pragmaAnnotationData);
       _annotationsDataBuilder.registerPragmaAnnotations(element, annotations);
 
@@ -341,6 +341,7 @@ class KernelModularStrategy extends ModularStrategy {
   @override
   ModularMemberData getModularMemberData(
       ir.Member node, EnumSet<PragmaAnnotation> annotations) {
+    // TODO(sigmund,johnniwinther): invoke computeModularMemberData directly
     ScopeModel scopeModel = _compilerTask.measureSubtask('closures',
         () => new ScopeModel.from(node, _elementMap.constantEvaluator));
     ImpactBuilderData impactBuilderData;

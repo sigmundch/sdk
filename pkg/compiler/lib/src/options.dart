@@ -52,6 +52,15 @@ class CompilerOptions implements DiagnosticOptions {
   /// If not null then [packageRoot] should be null.
   Uri packageConfig;
 
+  /// Whether the compiler is only running local modular analysis on a set of
+  /// libraries.
+  ///
+  /// This is currently only used in combination with loading files from kernel.
+  /// Analysis is intended to be performed on the libraries provided in the
+  /// default input dill file, but not on dependencies passed via
+  /// [dillDependencies].
+  bool modularAnalysis;
+
   /// List of kernel files to load.
   ///
   /// When compiling modularly, this contains kernel files that are needed
@@ -403,6 +412,7 @@ class CompilerOptions implements DiagnosticOptions {
       ..useNewSourceInfo = _hasOption(options, Flags.useNewSourceInfo)
       ..verbose = _hasOption(options, Flags.verbose)
       ..showInternalProgress = _hasOption(options, Flags.progress)
+      ..modularAnalysis = _hasOption(options, Flags.modularAnalysis)
       ..dillDependencies =
           _extractUriListOption(options, '${Flags.dillDependencies}')
       ..readDataUri = _extractUriOption(options, '${Flags.readData}=')
