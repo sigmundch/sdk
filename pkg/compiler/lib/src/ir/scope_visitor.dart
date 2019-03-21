@@ -4,9 +4,11 @@
 
 import 'package:kernel/ast.dart' as ir;
 import 'package:front_end/src/api_prototype/constant_evaluator.dart' as ir;
+import 'package:front_end/src/api_unstable/dart2js.dart' as ir;
 
 import 'closure.dart';
 import 'scope.dart';
+import 'util.dart';
 
 /// This builder walks the code to determine what variables are
 /// assigned/captured/free at various points to build a [ClosureScopeModel] and
@@ -106,7 +108,15 @@ class ScopeModelBuilder extends ir.Visitor<InitializerComplexity>
       }
     } else {
       assert(node is ir.Procedure || node is ir.Constructor);
-      node.accept(this);
+      if (node is ir.Procedure) {
+        print(">> ${node.isRedirectingFactoryConstructor} ${node.function.body}");
+      }
+      if (!(node is ir.Procedure && node.isRedirectingFactoryConstructor)) {
+        // Skip redirecting factories: they contain invalid expressions only
+        // used to suppport internal CFE modular compilation.
+        print(">> enter!");
+        node.accept(this);
+      }
     }
     return new ScopeModel(
         closureScopeModel: _model,
@@ -577,6 +587,7 @@ class ScopeModelBuilder extends ir.Visitor<InitializerComplexity>
   @override
   InitializerComplexity visitProcedure(ir.Procedure node) {
     visitInvokable(node, () {
+      print("visit procedure... ${node}");
       visitNode(node.function);
     });
     return const InitializerComplexity.lazy();

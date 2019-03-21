@@ -31,6 +31,7 @@ import 'inferrer/typemasks/masks.dart' show TypeMaskStrategy;
 import 'inferrer/types.dart'
     show GlobalTypeInferenceResults, GlobalTypeInferenceTask;
 import 'io/source_information.dart' show SourceInformation;
+import 'ir/modular.dart';
 import 'js_backend/backend.dart' show CodegenInputs, JavaScriptBackend;
 import 'js_backend/inferred_data.dart';
 import 'js_model/js_strategy.dart';
@@ -227,13 +228,8 @@ abstract class Compiler {
     reporter.log('Compiling $uri (${options.buildId})');
 
     if (options.readDataUri != null) {
-      GlobalTypeInferenceResults results =
-          await serializationTask.deserialize();
-      if (options.debugGlobalInference) {
-        performGlobalTypeInference(results.closedWorld);
-        return;
-      }
-      generateJavaScriptCode(results);
+      await runFromGlobalData();
+      return;
     } else {
       KernelResult result = await kernelLoader.load(uri);
       reporter.log("Kernel load complete");
@@ -254,12 +250,17 @@ abstract class Compiler {
       // front end for the Kernel path since Kernel doesn't have the notion of
       // imports (everything has already been resolved). (See
       // https://github.com/dart-lang/sdk/issues/29368)
-      if (result.libraries.contains(Uris.dart_mirrors)) {
+      if (!options.modularAnalysis &&
+          result.libraries.contains(Uris.dart_mirrors)) {
         reporter.reportWarningMessage(NO_LOCATION_SPANNABLE,
             MessageKind.MIRRORS_LIBRARY_NOT_SUPPORT_WITH_CFE);
       }
 
-      await compileFromKernel(result.rootLibraryUri, result.libraries);
+      if (options.modularAnalysis) {
+        await runModularAnalysis(result);
+      } else {
+        await compileFromKernel(result.rootLibraryUri, result.libraries);
+      }
     }
   }
 
@@ -278,6 +279,17 @@ abstract class Compiler {
           .putIfAbsent(selector.hashCode, () => <Selector>[])
           .add(selector);
     }
+  }
+
+  /// Run the backend of the compiler by reading all global input data from a
+  /// serialized data file.
+  Future runFromGlobalData() async {
+    GlobalTypeInferenceResults results = await serializationTask.deserialize();
+    if (options.debugGlobalInference) {
+      performGlobalTypeInference(results.closedWorld);
+      return;
+    }
+    generateJavaScriptCode(results);
   }
 
   /// Starts the resolution phase, creating the [ResolutionEnqueuer] if not
@@ -310,10 +322,6 @@ abstract class Compiler {
     WorldImpactBuilderImpl mainImpact = new WorldImpactBuilderImpl();
     FunctionEntity mainFunction = frontendStrategy.computeMain(mainImpact);
 
-    // In order to see if a library is deferred, we must compute the
-    // compile-time constants that are metadata.  This means adding
-    // something to the resolution queue.  So we cannot wait with
-    // this until after the resolution queue is processed.
     deferredLoadTask.beforeResolution(rootLibraryUri, libraries);
     impactStrategy = backend.createImpactStrategy(
         supportDeferredLoad: deferredLoadTask.isProgramSplit,
@@ -386,6 +394,25 @@ abstract class Compiler {
     backend.onCodegenEnd(codegen);
 
     checkQueue(codegenEnqueuer);
+  }
+
+  void runModularAnalysis(KernelResult result) {
+    if (!options.useCFEConstants) {
+      reporter.reportErrorMessage(NO_LOCATION_SPANNABLE, MessageKind.GENERIC,
+          {'text': "Modular analysis requires CFE constants"});
+      return;
+    }
+    _userCodeLocations
+        .addAll(result.moduleLibraries.map((l) => new CodeLocation(l)));
+    selfTask.measureSubtask("runModularAnalysis", () {
+      impactStrategy = backend.createImpactStrategy(
+          supportDeferredLoad: true, supportDumpInfo: true);
+      var included = result.moduleLibraries.toSet();
+      ModuleData moduleData = computeModuleData(
+          result.component, included, options, reporter, environment);
+      if (compilationFailed) return;
+      serializationTask.serializeModule(moduleData);
+    });
   }
 
   void compileFromKernel(Uri rootLibraryUri, Iterable<Uri> libraries) {
