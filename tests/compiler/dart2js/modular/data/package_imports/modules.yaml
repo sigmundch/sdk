@@ -1,0 +1,5 @@
+dependencies:
+  main: [f3, expect]
+  f3: a
+  a: f1
+  f1: f0

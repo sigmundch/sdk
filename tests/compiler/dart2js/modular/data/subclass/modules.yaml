@@ -1,0 +1,3 @@
+dependencies:
+  f1: f0
+  main: [f1, a]
