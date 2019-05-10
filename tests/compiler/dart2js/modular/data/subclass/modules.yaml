@@ -2,8 +2,8 @@
 # for details. All rights reserved. Use of this source code is governed by a
 # BSD-style license that can be found in the LICENSE file.
 #
-# Test illustrating how the modular pipeline works. This test is not currently
-# design to stress any specific feature of the compiler.
+# Test illustrating how the modular pipeline works. This test is not designed to
+# stress any specific feature of the compiler.
 dependencies:
   f1: f0
   main: [f1, a]

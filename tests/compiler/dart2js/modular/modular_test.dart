@@ -3,15 +3,19 @@
 // BSD-style license that can be found in the LICENSE file.
 
 /// Test the modular compilation pipeline of dart2js.
+///
+/// This is a shell that runs multiple tests, one per folder under `data/`.
 import 'dart:io';
-import 'package:async_helper/async_helper.dart';
-import 'package:expect/expect.dart';
-import 'package:modular_test/src/loader.dart';
-import 'package:modular_test/src/suite.dart';
-import 'package:modular_test/src/pipeline.dart';
-import 'package:modular_test/src/io_pipeline.dart';
 
 import 'package:args/args.dart';
+import 'package:async_helper/async_helper.dart';
+import 'package:expect/expect.dart';
+import 'package:front_end/src/compute_platform_binaries_location.dart'
+    show computePlatformBinariesLocation;
+import 'package:modular_test/src/io_pipeline.dart';
+import 'package:modular_test/src/loader.dart';
+import 'package:modular_test/src/pipeline.dart';
+import 'package:modular_test/src/suite.dart';
 
 _Options _options;
 main(List<String> args) {
@@ -51,10 +55,19 @@ const jsId = const DataId("js");
 
 // Step that compiles sources in a module to a .dill file.
 class SourceToDillStep implements IOModularStep {
+  @override
   DataId get resultId => dillId;
+
+  @override
   bool get needsSources => true;
+
+  @override
   List<DataId> get dependencyDataNeeded => const [dillId];
+
+  @override
   List<DataId> get moduleDataNeeded => const [];
+
+  @override
   bool get onlyOnMain => false;
 
   @override
@@ -82,19 +95,19 @@ class SourceToDillStep implements IOModularStep {
       }
     }
 
-    Set<Module> transitiveDependencies = _computeTransitiveDependencies(module);
-
     // We create a .packages file which defines the location of this module if
     // it is a package. The CFE requires that if a `package:` URI of a
     // dependency is used in an import, then we need that package entry in the
-    // .packages file. However, other than checking that the definition exists,
-    // the CFE will not actually used the resolved URI when the .dill files of
-    // dependencies are provided upfront. For that reason, it is safe to define
-    // those with an invalid folder as we do below.
+    // .packages file. However, after it checks that the definition exists, the
+    // CFE will not actually use the resolved URI if a library for the import
+    // URI is already found in one of the provided .dill files of the
+    // dependencies. For that reason, it is safe to define those with an invalid
+    // folder as we do below.
     var packagesContents = new StringBuffer();
     if (module.isPackage) {
       packagesContents.write('${module.name}:${module.packageBase}\n');
     }
+    Set<Module> transitiveDependencies = _computeTransitiveDependencies(module);
     for (Module dependency in transitiveDependencies) {
       if (dependency.isPackage) {
         packagesContents.write('${dependency.name}:unused\n');
@@ -105,6 +118,8 @@ class SourceToDillStep implements IOModularStep {
         .writeAsString('$packagesContents');
 
     var sdkRoot = Platform.script.resolve("../../../../");
+    var platform =
+        computePlatformBinariesLocation().resolve("dart2js_platform.dill");
 
     List<String> workerArgs = [
       sdkRoot.resolve("utils/bazel/kernel_worker.dart").toFilePath(),
@@ -116,7 +131,7 @@ class SourceToDillStep implements IOModularStep {
       '--multi-root-scheme',
       rootScheme,
       '--dart-sdk-summary',
-      '${sdkRoot.resolve('out/ReleaseX64/dart-sdk/lib/_internal/dart2js_platform.dill')}',
+      '${platform}',
       '--output',
       '${toUri(module, dillId)}',
       '--packages-file',
@@ -128,15 +143,26 @@ class SourceToDillStep implements IOModularStep {
 
     var result = await _runProcess(
         Platform.resolvedExecutable, workerArgs, root.toFilePath());
-    checkExitCode(result, this, module);
+    _checkExitCode(result, this, module);
   }
 }
 
+// Step that links all invokes dart2js on the main module and provides all
+// compiled .dill files as inputs to dart2js.
 class CompileFromDillStep implements IOModularStep {
+  @override
   DataId get resultId => jsId;
+
+  @override
   bool get needsSources => false;
+
+  @override
   List<DataId> get dependencyDataNeeded => const [dillId];
+
+  @override
   List<DataId> get moduleDataNeeded => const [dillId];
+
+  @override
   bool get onlyOnMain => true;
 
   @override
@@ -157,15 +183,25 @@ class CompileFromDillStep implements IOModularStep {
         dart2jsArgs,
         root.toFilePath());
 
-    checkExitCode(result, this, module);
+    _checkExitCode(result, this, module);
   }
 }
 
+/// Step that runs the output of dart2js in d8 and saves the output.
 class RunD8 implements IOModularStep {
+  @override
   DataId get resultId => const DataId("txt");
+
+  @override
   bool get needsSources => false;
+
+  @override
   List<DataId> get dependencyDataNeeded => const [];
+
+  @override
   List<DataId> get moduleDataNeeded => const [jsId];
+
+  @override
   bool get onlyOnMain => true;
 
   @override
@@ -182,13 +218,14 @@ class RunD8 implements IOModularStep {
     var result = await _runProcess(
         sdkRoot.resolve(_d8executable).toFilePath(), d8Args, root.toFilePath());
 
-    checkExitCode(result, this, module);
+    _checkExitCode(result, this, module);
 
     await File.fromUri(root.resolveUri(toUri(module, resultId)))
         .writeAsString(result.stdout);
   }
 }
 
+/// Helper to compute trnsitive dependencies from [module].
 Set<Module> _computeTransitiveDependencies(Module module) {
   Set<Module> deps = {};
   helper(Module m) {
@@ -197,30 +234,6 @@ Set<Module> _computeTransitiveDependencies(Module module) {
 
   module.dependencies.forEach(helper);
   return deps;
-}
-
-class _Options {
-  bool showSkipped = false;
-  bool verbose = false;
-  String filter = null;
-
-  static _Options parse(List<String> args) {
-    var parser = new ArgParser()
-      ..addFlag('verbose',
-          abbr: 'v',
-          defaultsTo: false,
-          help: "print detailed information about the test and modular steps")
-      ..addFlag('show-skipped',
-          defaultsTo: false,
-          help: "print the name of the tests skipped by the filtering option")
-      ..addOption('filter',
-          help: "only run tests containing this filter as a substring");
-    ArgResults argResults = parser.parse(args);
-    return _Options()
-      ..showSkipped = argResults['show-skipped']
-      ..verbose = argResults['verbose']
-      ..filter = argResults['filter'];
-  }
 }
 
 void _printTestStructure(ModularTest test) {
@@ -238,7 +251,7 @@ void _printTestStructure(ModularTest test) {
   print('$buffer');
 }
 
-void checkExitCode(ProcessResult result, IOModularStep step, Module module) {
+void _checkExitCode(ProcessResult result, IOModularStep step, Module module) {
   if (result.exitCode != 0 || _options.verbose) {
     stdout.write(result.stdout);
     stderr.write(result.stderr);
@@ -266,4 +279,28 @@ String get _d8executable {
     return 'third_party/d8/macos/d8';
   }
   throw new UnsupportedError('Unsupported platform.');
+}
+
+class _Options {
+  bool showSkipped = false;
+  bool verbose = false;
+  String filter = null;
+
+  static _Options parse(List<String> args) {
+    var parser = new ArgParser()
+      ..addFlag('verbose',
+          abbr: 'v',
+          defaultsTo: false,
+          help: "print detailed information about the test and modular steps")
+      ..addFlag('show-skipped',
+          defaultsTo: false,
+          help: "print the name of the tests skipped by the filtering option")
+      ..addOption('filter',
+          help: "only run tests containing this filter as a substring");
+    ArgResults argResults = parser.parse(args);
+    return _Options()
+      ..showSkipped = argResults['show-skipped']
+      ..verbose = argResults['verbose']
+      ..filter = argResults['filter'];
+  }
 }

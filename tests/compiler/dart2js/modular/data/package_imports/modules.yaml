@@ -4,8 +4,8 @@
 #
 # Test ensuring that the modular compiler works properly with `package:`
 # imports. This test also ensures that the dart2js implementation of the modular
-# test pipeline works as intended, but doesn't test any compiler or language
-# feature directly.
+# test pipeline works as intended. The test is not designed to cover any
+# compiler or language feature explicitly.
 dependencies:
   main: [f3, expect]
   f3: a
