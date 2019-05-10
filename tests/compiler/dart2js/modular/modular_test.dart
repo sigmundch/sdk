@@ -107,7 +107,7 @@ class SourceToDillStep implements IOModularStep {
     if (module.isPackage) {
       packagesContents.write('${module.name}:${module.packageBase}\n');
     }
-    Set<Module> transitiveDependencies = _computeTransitiveDependencies(module);
+    Set<Module> transitiveDependencies = computeTransitiveDependencies(module);
     for (Module dependency in transitiveDependencies) {
       if (dependency.isPackage) {
         packagesContents.write('${dependency.name}:unused\n');
@@ -169,7 +169,7 @@ class CompileFromDillStep implements IOModularStep {
   Future<void> execute(
       Module module, Uri root, ModuleDataToRelativeUri toUri) async {
     if (_options.verbose) print("step: dart2js on $module");
-    Set<Module> transitiveDependencies = _computeTransitiveDependencies(module);
+    Set<Module> transitiveDependencies = computeTransitiveDependencies(module);
     Iterable<String> dillDependencies =
         transitiveDependencies.map((m) => '${toUri(m, dillId)}');
     List<String> dart2jsArgs = [
@@ -223,17 +223,6 @@ class RunD8 implements IOModularStep {
     await File.fromUri(root.resolveUri(toUri(module, resultId)))
         .writeAsString(result.stdout);
   }
-}
-
-/// Helper to compute trnsitive dependencies from [module].
-Set<Module> _computeTransitiveDependencies(Module module) {
-  Set<Module> deps = {};
-  helper(Module m) {
-    if (deps.add(m)) m.dependencies.forEach(helper);
-  }
-
-  module.dependencies.forEach(helper);
-  return deps;
 }
 
 void _printTestStructure(ModularTest test) {
