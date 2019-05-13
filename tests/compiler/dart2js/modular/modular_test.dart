@@ -51,6 +51,8 @@ Future<void> _runTest(Uri uri, Uri baseDir) async {
 }
 
 const dillId = const DataId("dill");
+const updatedDillId = const DataId("udill");
+const modularAnalysisId = const DataId("mdata");
 const jsId = const DataId("js");
 
 // Step that compiles sources in a module to a .dill file.
@@ -147,11 +149,10 @@ class SourceToDillStep implements IOModularStep {
   }
 }
 
-// Step that links all invokes dart2js on the main module and provides all
-// compiled .dill files as inputs to dart2js.
-class CompileFromDillStep implements IOModularStep {
+// Step that runs the dart2js modular analysis
+class ModularAnalysisDart2jsStep implements IOModularStep {
   @override
-  DataId get resultId => jsId;
+  DataId get resultId => modularAnalysisId;
 
   @override
   bool get needsSources => false;
@@ -163,6 +164,59 @@ class CompileFromDillStep implements IOModularStep {
   List<DataId> get moduleDataNeeded => const [dillId];
 
   @override
+  bool get onlyOnMain => false;
+
+  @override
+  Future<void> execute(
+      Module module, Uri root, ModuleDataToRelativeUri toUri) async {
+    if (_options.verbose) print("step: modular dart2js on $module");
+    Set<Module> transitiveDependencies = computeTransitiveDependencies(module);
+    Iterable<String> dillDependencies =
+        transitiveDependencies.map((m) => '${toUri(m, dillId)}');
+    List<String> dart2jsArgs = [
+      '${toUri(module, dillId)}',
+      '--dill-dependencies=${dillDependencies.join(',')}',
+      '--out=${toUri(module, resultId)}',
+      '--modular-analysis',
+    ];
+    var sdkRoot = Platform.script.resolve("../../../../");
+    var result = await _runProcess(
+        sdkRoot.resolve("sdk/bin/dart2js").toFilePath(),
+        dart2jsArgs,
+        root.toFilePath());
+
+    _checkExitCode(result, this, module);
+  }
+}
+
+//// ------------
+//// Work in progress, next steps:
+//// 1. add ability to read the modular data
+//// 2. add ability for tests to produce output for the sdk
+//// 2b. support hybrid mode where the SDK is computed on phase-3?
+
+//// Separate:
+//// 3. add ability for tests to emit more than one file
+//// 4. add global step separate from full compile step
+
+// Step that links all invokes dart2js on the main module and provides all
+// compiled .dill files as inputs to dart2js.
+// TODO(sigmund): split out the global analysis. That requires adding support
+// for emitting 2 outputs from a step in the modular framework.
+class CompileFromDillStep implements IOModularStep {
+  @override
+  DataId get resultId => jsId;
+
+  @override
+  bool get needsSources => false;
+
+  @override
+  List<DataId> get dependencyDataNeeded => const [dillId, modularAnalysisId];
+
+  @override
+  List<DataId> get moduleDataNeeded => const [dillId, modularAnalysisId];
+
+  @override
   bool get onlyOnMain => true;
 
   @override
@@ -172,9 +226,12 @@ class CompileFromDillStep implements IOModularStep {
     Set<Module> transitiveDependencies = computeTransitiveDependencies(module);
     Iterable<String> dillDependencies =
         transitiveDependencies.map((m) => '${toUri(m, dillId)}');
+    Iterable<String> dataDependencies =
+        transitiveDependencies.map((m) => '${toUri(m, modularAnalysisId)}');
     List<String> dart2jsArgs = [
       '${toUri(module, dillId)}',
       '--dill-dependencies=${dillDependencies.join(',')}',
+      '--modular-data-dependencies=${dataDependencies.join(',')}',
       '--out=${toUri(module, resultId)}',
     ];
     var sdkRoot = Platform.script.resolve("../../../../");
