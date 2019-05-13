@@ -40,7 +40,7 @@ Future<void> _runTest(Uri uri, Uri baseDir) async {
 
   print("testing: $dirName");
   ModularTest test = await loadTest(uri);
-  if (_options.verbose) _printTestStructure(test);
+  if (_options.verbose) print(test.debugString());
   var pipeline = new IOPipeline([
     SourceToDillStep(),
     CompileFromDillStep(),
@@ -96,13 +96,17 @@ class SourceToDillStep implements IOModularStep {
     }
 
     // We create a .packages file which defines the location of this module if
-    // it is a package. The CFE requires that if a `package:` URI of a
+    // it is a package.  The CFE requires that if a `package:` URI of a
     // dependency is used in an import, then we need that package entry in the
     // .packages file. However, after it checks that the definition exists, the
     // CFE will not actually use the resolved URI if a library for the import
     // URI is already found in one of the provided .dill files of the
-    // dependencies. For that reason, it is safe to define those with an invalid
-    // folder as we do below.
+    // dependencies. For that reason, and to ensure that a step only has access
+    // to the files provided in a module, we generate a .packages with invalid
+    // folders for other packages.
+    // TODO(sigmund): follow up with the CFE to see if we can remove the need
+    // for the .packages entry altogether if they won't need to read the
+    // sources.
     var packagesContents = new StringBuffer();
     if (module.isPackage) {
       packagesContents.write('${module.name}:${module.packageBase}\n');
@@ -147,8 +151,8 @@ class SourceToDillStep implements IOModularStep {
   }
 }
 
-// Step that links all invokes dart2js on the main module and provides all
-// compiled .dill files as inputs to dart2js.
+// Step that invokes dart2js on the main module by providing the .dill files of
+// all transitive modules as inputs.
 class CompileFromDillStep implements IOModularStep {
   @override
   DataId get resultId => jsId;
@@ -172,15 +176,17 @@ class CompileFromDillStep implements IOModularStep {
     Set<Module> transitiveDependencies = _computeTransitiveDependencies(module);
     Iterable<String> dillDependencies =
         transitiveDependencies.map((m) => '${toUri(m, dillId)}');
-    List<String> dart2jsArgs = [
+    var sdkRoot = Platform.script.resolve("../../../../");
+    List<String> args = [
+      '--packages=${sdkRoot.toFilePath()}/.packages',
+      'package:compiler/src/dart2js.dart',
       '${toUri(module, dillId)}',
       '--dill-dependencies=${dillDependencies.join(',')}',
       '--out=${toUri(module, resultId)}',
     ];
-    var sdkRoot = Platform.script.resolve("../../../../");
     var result = await _runProcess(
-        sdkRoot.resolve("sdk/bin/dart2js").toFilePath(),
-        dart2jsArgs,
+        Platform.executable,
+        args,
         root.toFilePath());
 
     _checkExitCode(result, this, module);
@@ -234,21 +240,6 @@ Set<Module> _computeTransitiveDependencies(Module module) {
 
   module.dependencies.forEach(helper);
   return deps;
-}
-
-void _printTestStructure(ModularTest test) {
-  var buffer = new StringBuffer();
-  for (var module in test.modules) {
-    buffer.write('   ');
-    buffer.write(module.name);
-    buffer.write(': ');
-    buffer.write(module.isPackage ? 'package' : '(not package)');
-    buffer.write(
-        ', deps: {${module.dependencies.map((d) => d.name).join(", ")}}');
-    buffer.write(', sources: {${module.sources.map((u) => "$u").join(', ')}}');
-    buffer.write('\n');
-  }
-  print('$buffer');
 }
 
 void _checkExitCode(ProcessResult result, IOModularStep step, Module module) {
