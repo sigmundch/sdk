@@ -43,6 +43,7 @@ Future<void> _runTest(Uri uri, Uri baseDir) async {
   if (_options.verbose) print(test.debugString());
   var pipeline = new IOPipeline([
     SourceToDillStep(),
+    ModularAnalysisDart2jsStep(),
     GlobalAnalysisStep(),
     Dart2jsBackendStep(),
     RunD8(),
@@ -127,9 +128,6 @@ class SourceToDillStep implements IOModularStep {
         .writeAsString('$packagesContents');
 
     var sdkRoot = Platform.script.resolve("../../../../");
-    var platform =
-        computePlatformBinariesLocation().resolve("dart2js_platform.dill");
-
     List<String> workerArgs = [
       sdkRoot.resolve("utils/bazel/kernel_worker.dart").toFilePath(),
       '--no-summary-only',
@@ -140,7 +138,7 @@ class SourceToDillStep implements IOModularStep {
       '--multi-root-scheme',
       rootScheme,
       '--dart-sdk-summary',
-      '${platform}',
+      '${_platformDill}',
       '--output',
       '${toUri(module, dillId)}',
       '--packages-file',
@@ -178,8 +176,10 @@ class ModularAnalysisDart2jsStep implements IOModularStep {
       Module module, Uri root, ModuleDataToRelativeUri toUri) async {
     if (_options.verbose) print("step: modular dart2js on $module");
     Set<Module> transitiveDependencies = computeTransitiveDependencies(module);
-    Iterable<String> dillDependencies =
-        transitiveDependencies.map((m) => '${toUri(m, dillId)}');
+    Iterable<String> dillDependencies = [
+      '$_platformDill',
+      for (var m in transitiveDependencies) '${toUri(m, dillId)}',
+    ];
     List<String> dart2jsArgs = [
       '${toUri(module, dillId)}',
       '--dill-dependencies=${dillDependencies.join(',')}',
@@ -196,15 +196,27 @@ class ModularAnalysisDart2jsStep implements IOModularStep {
   }
 }
 
-//// ------------
-//// Work in progress, next steps:
-//// 1. add ability to read the modular data
-//// 2. add ability for tests to produce output for the sdk
-//// 2b. support hybrid mode where the SDK is computed on phase-3?
-
-//// Separate:
-//// 3. add ability for tests to emit more than one file
-//// 4. add global step separate from full compile step
+// ------------
+// Work in progress, next steps:
+// 1. add ability to read the modular data
+// 2. add ability for tests to produce output for the sdk
+//  options:
+//  - define a module for the sdk upfront (this may require a special `isSdk`
+//  flag in the test suite), to allow calling compile-platform as part of the
+//  test suite.
+//  - feed the default .dill file always, but make global steps take the extra
+//  time to create it if needed.
+//
+// 3. add ability for tests to emit more than one file: this is so we can emit
+// mdata + mdill
+//
+// 4. add global analysis step separate from full compile step
+//
+// 5. once we add compile-platform, there is potential that a single test will
+// be too expensive. Some options:
+//    1. do codegen for test.dart integration - we'd end up with a test per
+//       folder
+//    2. design sharing of input/outputs across tests?
 
 // Step that invokes dart2js on the main module by providing the .dill files of
 // all transitive modules as inputs.
@@ -250,7 +262,6 @@ class GlobalAnalysisStep implements IOModularStep {
     ];
     var result =
         await _runProcess(Platform.executable, args, root.toFilePath());
-
     _checkExitCode(result, this, module);
   }
 }
@@ -287,7 +298,6 @@ class Dart2jsBackendStep implements IOModularStep {
     ];
     var result =
         await _runProcess(Platform.executable, args, root.toFilePath());
-
     _checkExitCode(result, this, module);
   }
 }
@@ -359,6 +369,10 @@ String get _d8executable {
   }
   throw new UnsupportedError('Unsupported platform.');
 }
+
+// TODO(sigmund): add an implicit module for the sdk instead.
+Uri _platformDill =
+    computePlatformBinariesLocation().resolve("dart2js_platform.dill");
 
 class _Options {
   bool showSkipped = false;
